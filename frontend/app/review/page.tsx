@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { PackagePreview } from "@/components/PackagePreview";
 import { ApiError, apiFetch, postJson } from "@/lib/api";
 
 type Item = { id: string; title: string; status: string; created_by: string };
@@ -45,6 +46,7 @@ export default function ReviewPage() {
   }
 
   return (
+    <div className="space-y-8">
     <div className="grid gap-6 md:grid-cols-[1fr_1fr]">
       <section className="space-y-3">
         <h1 className="text-2xl font-semibold">Review queue</h1>
@@ -97,6 +99,8 @@ export default function ReviewPage() {
           <p className="text-sm text-[var(--muted)]">Select an item from the queue.</p>
         )}
       </section>
+    </div>
+    {selected && <PackagePreview key={selected.id} loId={selected.id} />}
     </div>
   );
 }

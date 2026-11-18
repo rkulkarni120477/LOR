@@ -1,16 +1,19 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_storage
 from app.core.config import Settings, get_settings
+from app.core.errors import NotFoundError
 from app.core.security import Principal, Role, get_principal, require_roles
 from app.db.session import get_db
 from app.schemas.common import Page
 from app.schemas.content import ContentDetail, ContentOut, VersionOut
 from app.schemas.lom import LOMMetadata
 from app.services import content as content_service
+from app.services import preview as preview_service
 from app.services.users import ensure_user
 from app.storage.base import StorageBackend
 
@@ -81,6 +84,43 @@ def list_content(
     )
     items = [ContentOut.model_validate(r) for r in rows]
     return Page[ContentOut](items=items, page=page, page_size=page_size, total=total)
+
+
+@router.get("/{lo_id}/package/files")
+def list_package_files(
+    lo_id: str,
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR, Role.REVIEWER)),
+) -> dict:
+    lo = content_service.get_learning_object(db, lo_id, principal)
+    if not lo.versions:
+        raise NotFoundError("no package for this learning object")
+    return {"files": preview_service.list_files(storage, lo.versions[-1].storage_key)}
+
+
+@router.get("/{lo_id}/package/files/{file_path:path}")
+def get_package_file(
+    lo_id: str,
+    file_path: str,
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR, Role.REVIEWER)),
+) -> Response:
+    lo = content_service.get_learning_object(db, lo_id, principal)
+    if not lo.versions:
+        raise NotFoundError("no package for this learning object")
+    data, content_type = preview_service.read_file(storage, lo.versions[-1].storage_key, file_path)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            # Package content is untrusted: never run its scripts with the app's origin.
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/{lo_id}", response_model=ContentDetail)

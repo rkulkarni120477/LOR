@@ -3,8 +3,10 @@
 import json
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 
-from fastapi import APIRouter, Depends
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -16,6 +18,25 @@ from app.schemas.agents import AgentRunResponse, AskRequest, ResumeRequest
 from app.services import agent_runs
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+@contextmanager
+def _ai_service_errors():
+    """Turn AWS/Bedrock failures into a clear 503 instead of a generic 500."""
+    try:
+        yield
+    except NoCredentialsError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service unavailable: AWS credentials were not found. "
+            "Configure an AWS profile or IAM role (see infra/aws/README.md).",
+        ) from exc
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI service unavailable: {type(exc).__name__}. Check AWS region and "
+            "Bedrock model access.",
+        ) from exc
 
 
 def _to_response(thread_id: str, state: dict) -> AgentRunResponse:
@@ -48,10 +69,11 @@ def ingest(
 ) -> AgentRunResponse:
     lo = agent_runs.load_package_key(db, lo_id, principal)
     thread_id = f"ingest:{lo_id}:{uuid.uuid4()}"
-    state = runtime.run_ingest(
-        thread_id,
-        {"lo_id": lo_id, "file_path": lo, "messages": [], "review_decision": ""},
-    )
+    with _ai_service_errors():
+        state = runtime.run_ingest(
+            thread_id,
+            {"lo_id": lo_id, "file_path": lo, "messages": [], "review_decision": ""},
+        )
     if state.get("__interrupt__") is None:
         agent_runs.apply_draft_metadata(db, lo_id, state, principal)
     return _to_response(thread_id, state)
@@ -67,14 +89,15 @@ def resume(
 ) -> AgentRunResponse:
     if not thread_id.startswith("ingest:"):
         raise NotFoundError("unknown agent thread")
-    state = runtime.resume_ingest(
-        thread_id,
-        {
-            "decision": payload.decision,
-            "comment": payload.comment or "",
-            "reviewer": principal.subject,
-        },
-    )
+    with _ai_service_errors():
+        state = runtime.resume_ingest(
+            thread_id,
+            {
+                "decision": payload.decision,
+                "comment": payload.comment or "",
+                "reviewer": principal.subject,
+            },
+        )
     lo_id = thread_id.split(":")[1]
     if state.get("__interrupt__") is None:
         agent_runs.apply_draft_metadata(db, lo_id, state, principal)

@@ -49,6 +49,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "env": settings.env}
 
     app.include_router(api_router, prefix="/api/v1")
+    if settings.env == "development":
+        # DEV ONLY: token minting. Not registered in any other environment.
+        from app.api.v1.dev import router as dev_router
+
+        app.include_router(dev_router, prefix="/api/v1")
     return app
 
 

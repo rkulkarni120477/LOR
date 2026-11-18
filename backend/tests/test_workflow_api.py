@@ -187,3 +187,19 @@ def test_completions_report_requires_admin(client, token_factory):
 )
 def test_transition_table(current, target, expected):
     assert can_transition(current, target) is expected
+
+
+def test_admin_can_approve_own_submission(client, token_factory):
+    lo_id = _upload(client, token_factory, title="Admin course").json()["id"]
+    client.post(
+        f"/api/v1/workflow/{lo_id}/submit",
+        headers=_headers(token_factory, ["Contributor"], "contrib-1"),
+    )
+    # Same subject submitted and approves, but holds the Admin role, so this is allowed.
+    response = client.post(
+        f"/api/v1/workflow/{lo_id}/decision",
+        json={"decision": "approve"},
+        headers={"Authorization": f"Bearer {token_factory(['Admin'], sub='contrib-1')}"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "approved"

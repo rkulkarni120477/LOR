@@ -36,6 +36,14 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   return (await response.json()) as T;
 }
 
+/** Fetches a binary or text resource through the proxy, with the bearer token attached. */
+export async function apiBlob(path: string): Promise<Blob> {
+  const headers = new Headers(authHeader());
+  const response = await fetch(`/api${path}`, { headers, cache: "no-store" });
+  if (!response.ok) throw new ApiError(response.status, `Request failed (${response.status})`);
+  return response.blob();
+}
+
 export function postJson<T>(path: string, body: unknown): Promise<T> {
   return apiFetch<T>(path, { method: "POST", body: JSON.stringify(body) });
 }

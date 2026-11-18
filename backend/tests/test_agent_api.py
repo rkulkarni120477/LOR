@@ -118,3 +118,22 @@ def test_ask_streams_server_sent_events(client, token_factory, runtime):
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: token" in response.text
     assert "event: done" in response.text
+
+
+def test_missing_aws_credentials_return_503_not_500(client, token_factory, runtime):
+    from botocore.exceptions import NoCredentialsError
+
+    lo_id = _upload(
+        client, token_factory, build_package(images=[("a.png", "Chart")], license_text="CC-BY-4.0")
+    )
+
+    def no_creds(*_args, **_kwargs):
+        raise NoCredentialsError()
+
+    runtime.run_ingest = no_creds
+    response = client.post(
+        f"/api/v1/agents/ingest/{lo_id}",
+        headers={"Authorization": f"Bearer {token_factory(['Contributor'], sub='contrib-1')}"},
+    )
+    assert response.status_code == 503
+    assert "AWS credentials" in response.json()["detail"]

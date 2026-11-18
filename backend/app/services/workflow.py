@@ -12,7 +12,7 @@ from typing import Final
 from sqlalchemy.orm import Session
 
 from app.core.errors import InvalidTransitionError, NotFoundError, SeparationOfDutiesError
-from app.core.security import Principal
+from app.core.security import Principal, Role
 from app.db.models import LearningObject, WorkflowState
 from app.services import audit
 
@@ -87,8 +87,9 @@ def decide(
     comment: str | None = None,
 ):
     lo = _load(session, lo_id)
-    # Four-eyes rule: the person who created the item cannot approve or reject it.
-    if actor.subject == lo.created_by:
+    # Four-eyes rule: a Reviewer cannot approve or reject their own submission. Admin is exempt
+    # by design (superuser), so an Admin may approve an item they submitted.
+    if actor.subject == lo.created_by and Role.ADMIN.value not in actor.roles:
         raise SeparationOfDutiesError("reviewers cannot decide on their own submissions")
     target = APPROVED if decision == "approve" else REJECTED
     return transition(session, lo, target, actor, comment)

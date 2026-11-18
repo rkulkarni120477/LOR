@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="geography-k7-our-world" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1">
+  <metadata>
+    <schema>ADL SCORM</schema>
+    <schemaversion>1.2</schemaversion>
+    <license>CC-BY-4.0</license>
+  </metadata>
+  <title>Geography K-7: Our World</title>
+  <organizations/>
+  <resources>
+    <resource identifier="res1" type="webcontent" href="index.html"/>
+  </resources>
+</manifest>

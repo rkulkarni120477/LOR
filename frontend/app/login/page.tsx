@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { DevTokenPanel } from "@/components/DevTokenPanel";
 import { saveToken, sessionFromToken } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -10,20 +11,31 @@ export default function LoginPage() {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  function submit(event: React.FormEvent) {
-    event.preventDefault();
-    const session = sessionFromToken(token.trim());
+  function signInWith(value: string) {
+    const trimmed = value.trim();
+    const session = sessionFromToken(trimmed);
     if (!session) {
       setError("That token is malformed or expired.");
       return;
     }
-    saveToken(token.trim());
+    saveToken(trimmed);
     router.push("/search");
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    signInWith(token);
   }
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <h1 className="text-2xl font-semibold">Sign in</h1>
+      <DevTokenPanel
+        onUse={(value) => {
+          setToken(value);
+          signInWith(value);
+        }}
+      />
       <div className="rounded border border-[var(--border)] p-4 text-sm">
         <p className="font-medium">Enterprise SSO: not configured in this build.</p>
         <p className="mt-1 text-[var(--muted)]">

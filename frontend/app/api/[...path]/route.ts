@@ -8,7 +8,12 @@ export const dynamic = "force-dynamic";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 const FORWARD_REQUEST_HEADERS = ["authorization", "content-type", "accept"];
-const FORWARD_RESPONSE_HEADERS = ["content-type", "cache-control"];
+const FORWARD_RESPONSE_HEADERS = [
+  "content-type",
+  "cache-control",
+  "content-security-policy",
+  "x-content-type-options",
+];
 
 type Context = { params: Promise<{ path: string[] }> };
 
