@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lor-backend"
+version = "0.1.0"
+description = "Enterprise Learning Object Repository - FastAPI backend"
+requires-python = ">=3.12,<3.13"
+# All versions are pinned. Verified installable with pip on Python 3.12.10 (Windows).
+dependencies = [
+  "fastapi==0.164.0",
+  "uvicorn==0.54.0",
+  "pydantic==2.14.3",
+  "pydantic-settings==2.16.3",
+  "sqlalchemy==2.1.9",
+  "alembic==1.20.1",
+  "PyJWT==2.15.1",
+  "cryptography==50.0.2",
+  "httpx==0.28.1",
+  "python-multipart==0.0.34",
+  "langchain-core==1.8.2",
+  "langchain-aws==1.9.3",
+  "langgraph==1.2.22",
+  "langgraph-checkpoint-sqlite==3.1.3",
+  "sqlite-vec==0.1.9",
+  "boto3==1.44.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.2.0",
+  "pytest-asyncio==1.5.0",
+  "ruff==0.17.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["aws: needs real AWS Bedrock credentials; run with -m aws"]
+# AWS tests are excluded by default so `make test` runs offline.
+addopts = "-m 'not aws'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "UP046"]  # B008: FastAPI Depends() idiom; UP046: pydantic generic Page[T]
+
+

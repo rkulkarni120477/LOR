@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local data and secrets
+.env
+.env.local
+backend/.dev_keys/
+backend/data/
+backend/lor.db
+backend/checkpoints.db
+backend/vectors.db
+*.db
+
+# Node
+node_modules/
+.next/
+frontend/out/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json

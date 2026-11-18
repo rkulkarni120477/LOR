@@ -1,0 +1,39 @@
+# Local stack: backend (FastAPI + Alembic) and frontend (Next.js). Data lives in named volumes.
+# Run from repo root: docker compose -f infra/docker-compose.yml up --build
+services:
+  backend:
+    build:
+      context: ../backend
+    env_file:
+      - ../.env
+    environment:
+      # Container paths override the host-relative defaults in .env.
+      DATABASE_URL: sqlite:////srv/data/lor.db
+      CHECKPOINT_DB_PATH: /srv/data/checkpoints.db
+      VECTOR_DB_PATH: /srv/data/vectors.db
+      LOCAL_STORAGE_PATH: /srv/data/storage
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    volumes:
+      - lor-data:/srv/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build:
+      context: ../frontend
+    environment:
+      # Server-side proxy target. The browser never talks to the backend directly.
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  lor-data:
