@@ -4,10 +4,12 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     agents,
+    analytics,
     auth,
     collections,
     content,
     identity,
+    integrations,
     library,
     metadata,
     notifications,
@@ -16,6 +18,7 @@ from app.api.v1 import (
     search,
     taxonomy,
     uploads,
+    versioning,
     workflow,
     xapi,
 )
@@ -31,9 +34,12 @@ for module in (
     search,
     taxonomy,
     uploads,
+    versioning,
     workflow,
     reports,
     collections,
+    analytics,
+    integrations,
     repository,
     agents,
     xapi,

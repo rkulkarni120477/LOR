@@ -12,7 +12,7 @@ from app.core.errors import ConflictError, DomainError, NotFoundError, Validatio
 from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM, SavedSearch, Version, utcnow
 from app.schemas.library import DraftIn, Question, QuizIn, RichTextIn
-from app.services import audit
+from app.services import audit, versioning
 from app.services.access import can_read, read_condition, require_object
 from app.services.rich_text import plain_text, sanitize_html, search_text
 from app.services.search_index import schedule_index
@@ -143,6 +143,7 @@ def create_rich_text(session: Session, actor: Principal, data: RichTextIn) -> Le
         metadata=data.model_dump(include=METADATA_FIELDS),
         is_template=data.is_template,
     )
+    versioning.ensure_snapshot(session, lo, actor, "create")
     audit.record(
         session,
         actor_subject=actor.subject,
@@ -165,6 +166,7 @@ def create_quiz(session: Session, actor: Principal, data: QuizIn) -> LearningObj
         metadata=data.model_dump(include=METADATA_FIELDS),
         is_template=data.is_template,
     )
+    versioning.ensure_snapshot(session, lo, actor, "create")
     audit.record(
         session,
         actor_subject=actor.subject,
@@ -219,6 +221,7 @@ def save_draft(session: Session, actor: Principal, lo_id: str, data: DraftIn) ->
     _sync_metadata(session, lo, **current, actor=actor.subject)
     _refresh_search(lo)
     lo.revision += 1
+    versioning.ensure_snapshot(session, lo, actor, "metadata")
     _commit(session, lo)
     return lo
 

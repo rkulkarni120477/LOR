@@ -20,6 +20,7 @@ import {
 } from "@mui/material";
 import { apiFetch, postJson, putJson } from "@/lib/api";
 import { LibraryPreview, useItemPreview } from "@/components/LibraryPreview";
+import { AiAssistPanel } from "@/components/AiAssistPanel";
 
 type Kind = "rich_text" | "quiz" | "assessment";
 type QuestionDraft = {
@@ -552,6 +553,7 @@ function EditorBody({
         </Stack>
       )}
 
+      {id && <AiAssistPanel loId={id} />}
       <Paper sx={{ p: 2 }}>
         <Stack sx={{ justifyContent: "space-between", alignItems: "center" }} direction="row">
           <Typography sx={{ fontWeight: 600 }}>Preview</Typography>

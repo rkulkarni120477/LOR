@@ -12,7 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import DuplicateError, NotFoundError, QuarantinedError, ValidationFailure
 from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM, Version
-from app.services import audit, package_validation
+from app.services import audit, package_validation, versioning
 from app.services.access import read_condition
 from app.services.malware import build_scanner
 from app.services.search_index import schedule_index
@@ -185,6 +185,7 @@ def ingest(
             thumb_key,
         )
     )
+    versioning.ensure_snapshot(session, lo, actor, "create")
     audit.record(
         session,
         actor_subject=actor.subject,

@@ -14,6 +14,7 @@ import {
   can,
 } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import { NotificationsMenu } from "@/components/NotificationsMenu";
 
 const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[] = [
@@ -34,12 +35,18 @@ const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[]
   { href: "/reports", label: "Reports & Analytics", icon: "chart", roles: ["Admin"] },
   { href: "/schema", label: "Metadata Schema", icon: "tag", roles: ["Admin"] },
   { href: "/taxonomy", label: "Taxonomy", icon: "tag", roles: ["Admin"] },
+  { href: "/integrations", label: "Administration", icon: "settings", roles: ["Admin"] },
 ];
 
 export function Nav({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const token = useSyncExternalStore(subscribeToSession, readStoredToken, () => null);
+  const brand = useQuery({
+    queryKey: ["branding"],
+    queryFn: () => apiFetch<{ app_name: string }>("/v1/branding"),
+    retry: false,
+  });
   const session = useMemo(() => (token ? sessionFromToken(token) : null), [token]);
   const displayName = session?.email?.split("@")[0] ?? session?.subject ?? "Guest";
   const initials = displayName
@@ -61,7 +68,7 @@ export function Nav({ children }: { children: ReactNode }) {
           <span className="brand-symbol">
             <Icon name="layers" size={29} />
           </span>
-          <span className="brand-name">ELOR</span>
+          <span className="brand-name">{brand.data?.app_name ?? "ELOR"}</span>
         </Link>
         <span className="header-divider" aria-hidden="true" />
         <span className="header-title">Enterprise Learning Object Repository</span>

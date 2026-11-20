@@ -21,6 +21,7 @@ import { SessionBootstrap } from "@/components/SessionBootstrap";
 import Administration from "@/views/Administration";
 import Library from "@/views/Library";
 import SchemaPage from "@/views/Schema";
+import IntegrationsPage from "@/views/Integrations";
 import TaxonomyPage from "@/views/Taxonomy";
 import Editor from "@/views/Editor";
 
@@ -72,6 +73,7 @@ function QuerySession() {
           <Route path="/administration" element={<Administration />} />
           <Route path="/library" element={<Library />} />
           <Route path="/schema" element={<SchemaPage />} />
+          <Route path="/integrations" element={<IntegrationsPage />} />
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/library/new/:kind" element={<Editor />} />
           <Route path="/library/:id/edit" element={<Editor />} />

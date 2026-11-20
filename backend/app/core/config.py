@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     app_name: str = "ELOR"
 
+    # AI-assisted authoring. "rules" is deterministic and always available. "llm" uses Claude
+    # through Bedrock and falls back to rules when the model is unavailable.
+    ai_authoring_mode: Literal["rules", "llm"] = "rules"
+
     # Agent / vector stores (separate SQLite files so Alembic never sees vec0 tables).
     checkpoint_db_path: str = "./checkpoints.db"
     vector_db_path: str = "./vectors.db"

@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import (
+    ConflictError,
     InvalidTransitionError,
     NotFoundError,
     SeparationOfDutiesError,
@@ -44,7 +45,7 @@ from app.db.models import (
     WorkflowState,
     utcnow,
 )
-from app.services import audit
+from app.services import audit, versioning
 from app.services import notifications as notify_service
 from app.services.access import require_object
 from app.services.search_index import schedule_index
@@ -322,6 +323,7 @@ def submit(
     if open_case(session, lo_id) is not None:
         raise InvalidTransitionError("this item already has a review in progress")
     resolved_id, policy_name, stages = resolve_policy(session, policy_id)
+    snapshot = versioning.ensure_snapshot(session, lo, actor, "submit")
     transition(session, lo, SUBMITTED, actor, comment, commit=False)
     previous = latest_case(session, lo_id)
     if previous is not None and previous.status in {"changes_requested", "rejected"}:
@@ -337,6 +339,7 @@ def submit(
         stages=stages,
         stage_position=1,
         submitted_by=actor.subject,
+        snapshot_id=snapshot.id,
     )
     session.add(case)
     session.flush()
@@ -678,6 +681,10 @@ def publish(session: Session, lo_id: str, actor: Principal) -> LearningObject:
     lo = _load(session, lo_id)
     # Separation of duties: whoever approved the item cannot also publish it.
     last = latest_case(session, lo_id)
+    if last is not None and last.status == "approved":
+        current = versioning.latest(session, lo_id)
+        if current is not None and last.snapshot_id != current.id:
+            raise ConflictError("the item changed after it was approved; resubmit for approval")
     if last is not None and last.status == "approved" and not _is_super(actor):
         approvers = {
             t.decided_by

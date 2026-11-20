@@ -9,7 +9,7 @@ from app.core.errors import ConflictError, NotFoundError, ValidationFailure
 from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM
 from app.schemas.lom import LOMMetadata
-from app.services import audit, taxonomy
+from app.services import audit, taxonomy, versioning
 from app.services.access import require_object
 from app.services.search_index import schedule_index
 
@@ -49,6 +49,7 @@ def update_metadata(
     meta.updated_by = actor.subject
     meta.updated_at = datetime.now(UTC)
     lo.title = data["title"]
+    versioning.ensure_snapshot(session, lo, actor, "metadata")
 
     audit.record(
         session,

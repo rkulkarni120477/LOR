@@ -16,7 +16,7 @@ from app.db.session import get_db
 from app.schemas.common import Page
 from app.schemas.content import ContentDetail, ContentOut, VersionOut
 from app.schemas.lom import LOMMetadata
-from app.services import audit
+from app.services import audit, versioning
 from app.services import collections as collection_service
 from app.services import content as content_service
 from app.services import preview as preview_service
@@ -272,6 +272,7 @@ def restore_version(
             comment=f"Restored file version {version_number} as {new_number}",
         )
     )
+    versioning.ensure_snapshot(db, lo, principal, "file", f"Restored file version {version_number}")
     audit.record(
         db,
         actor_subject=principal.subject,

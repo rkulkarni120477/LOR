@@ -14,7 +14,8 @@ def record(
     entity_id: str,
     details: dict[str, Any] | None = None,
 ) -> None:
-    """Add an audit row to the current transaction. The caller commits."""
+    """Add an audit row to the current transaction. The caller commits.
+    Every audit row is also queued for webhooks subscribed to its action."""
     session.add(
         AuditLog(
             actor_subject=actor_subject,
@@ -24,3 +25,6 @@ def record(
             details=details or {},
         )
     )
+    from app.services import integrations  # local import: integrations depends on the models only
+
+    integrations.enqueue(session, action, entity_type, entity_id, actor_subject, details)

@@ -504,6 +504,8 @@ class ReviewCase(Base):
     submitted_by: Mapped[str] = mapped_column(String(255), index=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The metadata snapshot this review approves. Publishing requires it to still be current.
+    snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class StageTask(Base):
@@ -586,5 +588,164 @@ class MetadataField(Base):
     required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     help_text: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MetadataSnapshot(Base):
+    """Immutable record of an item's metadata and file at one point. Insert-only: the ORM refuses
+    updates and deletes. Retention removes old rows through an audited bulk delete."""
+
+    __tablename__ = "metadata_snapshots"
+    __table_args__ = (UniqueConstraint("lo_id", "seq", name="uq_snapshot_lo_seq"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    major: Mapped[int] = mapped_column(Integer)
+    minor: Mapped[int] = mapped_column(Integer)
+    # create | metadata | file | restore | promote
+    kind: Mapped[str] = mapped_column(String(16))
+    file_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    digest: Mapped[str] = mapped_column(String(64))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class VersionComment(Base):
+    __tablename__ = "version_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    snapshot_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    author: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RetentionPolicy(Base):
+    """Single row (id 1). Keeps the newest keep_last snapshots per item; majors can be kept too."""
+
+    __tablename__ = "retention_policy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    keep_last: Mapped[int] = mapped_column(Integer, default=50)
+    keep_majors: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ScheduledReport(Base):
+    """A recurring report. The owner's roles, groups and department are captured when it is
+    created, so each run sees only what the owner could see then."""
+
+    __tablename__ = "scheduled_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), index=True)
+    owner_roles: Mapped[list[str]] = mapped_column(JSON, default=list)
+    owner_group_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    owner_department_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    name: Mapped[str] = mapped_column(String(120))
+    report: Mapped[str] = mapped_column(String(32))
+    format: Mapped[str] = mapped_column(String(8))
+    window_days: Mapped[int] = mapped_column(Integer, default=30)
+    cadence: Mapped[str] = mapped_column(String(8), default="weekly")
+    recipients: Mapped[list[str]] = mapped_column(JSON, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)  # noqa: E501
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReportRun(Base):
+    __tablename__ = "report_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schedule_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), index=True)
+    recipients: Mapped[list[str]] = mapped_column(JSON, default=list)
+    report: Mapped[str] = mapped_column(String(32))
+    format: Mapped[str] = mapped_column(String(8))
+    filename: Mapped[str] = mapped_column(String(200))
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Webhook(Base):
+    """Outbound event subscription. HMAC signing needs the secret itself, so it is stored in the
+    database (restrict access to it) and returned once when the webhook is created."""
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    url: Mapped[str] = mapped_column(String(1024))
+    events: Mapped[list[str]] = mapped_column(JSON, default=list)
+    secret: Mapped[str] = mapped_column(String(128))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    webhook_id: Mapped[int] = mapped_column(
+        ForeignKey("webhooks.id", ondelete="CASCADE"), index=True
+    )
+    event: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    # pending | delivered | failed
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Branding(Base):
+    """Single row (id 1). Shown on the sign-in page and in the header."""
+
+    __tablename__ = "branding"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    app_name: Mapped[str] = mapped_column(String(80), default="ELOR")
+    tagline: Mapped[str] = mapped_column(String(160), default="Enterprise Learning Object Repository")  # noqa: E501
+    primary_color: Mapped[str] = mapped_column(String(7), default="#1762c4")
+    logo_url: Mapped[str] = mapped_column(String(1024), default="")
+    footer_text: Mapped[str] = mapped_column(String(300), default="")
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AISuggestion(Base):
+    """A machine-drafted suggestion. It has no effect until a person accepts it."""
+
+    __tablename__ = "ai_suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    # outline | objectives | summary | quiz | metadata | classification | accessibility
+    kind: Mapped[str] = mapped_column(String(24))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    generator: Mapped[str] = mapped_column(String(32))
+    # pending | accepted | rejected | applied-note (accepted, but not applicable to this item type)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    requested_by: Mapped[str] = mapped_column(String(255))
+    decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
