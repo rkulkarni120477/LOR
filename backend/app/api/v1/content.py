@@ -19,6 +19,7 @@ from app.schemas.lom import LOMMetadata
 from app.services import audit
 from app.services import content as content_service
 from app.services import preview as preview_service
+from app.services.search_index import schedule_index
 from app.services.users import ensure_user
 from app.storage.base import StorageBackend
 
@@ -240,6 +241,7 @@ def restore_version(
         details={"source": version_number, "new_version": new_number},
     )
     try:
+        schedule_index(db, lo_id)
         db.commit()
     except IntegrityError as exc:
         db.rollback()

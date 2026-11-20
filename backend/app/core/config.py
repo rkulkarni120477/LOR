@@ -6,6 +6,7 @@ the standard boto3 credential chain (env vars, profile, or IAM role).
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,8 +24,17 @@ class Settings(BaseSettings):
     env: str = "development"
     log_level: str = "INFO"
 
-    # Database (SQLite now; set DATABASE_URL to postgresql+psycopg://... later).
+    # Lightweight default; the full stack uses postgresql+psycopg:// URLs.
     database_url: str = "sqlite:///./lor.db"
+    redis_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
+    search_backend: Literal["sql", "opensearch"] = "sql"
+    opensearch_url: str = "http://localhost:9200"
+    opensearch_index: str = "elor-content-v1"
+    opensearch_username: str = ""
+    opensearch_password: str = ""
+    opensearch_verify_certs: bool = True
+    task_always_eager: bool = False
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

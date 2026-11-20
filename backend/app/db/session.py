@@ -17,6 +17,9 @@ def make_engine(url: str) -> Engine:
         kwargs["connect_args"] = {"check_same_thread": False}
         if ":memory:" in url:
             kwargs["poolclass"] = StaticPool
+    if not is_sqlite:
+        kwargs["pool_pre_ping"] = True
+        kwargs["pool_recycle"] = 1800
     engine = create_engine(url, **kwargs)
     if is_sqlite:
 

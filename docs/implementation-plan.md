@@ -33,6 +33,10 @@ metadata_schemas and values, tags and object_tags, workflow templates/instances/
 reviews, version-specific approvals, notifications, integrations and usage_events.
 Add these with reviewed migrations, not unversioned startup create_all calls.
 
+The technology-stack extension adds `search_index_jobs` with learning object ID,
+attempt count, created time, and indexed next-attempt time. It deliberately retains
+jobs after an object is removed so a worker can delete its stale search projection.
+
 ## API contract
 
 All paths below are under `/api/v1`; authenticated bearer token required. Runtime
@@ -60,8 +64,8 @@ completions. Storage bytes count distinct underlying storage keys.
 
 1. Foundation: preserve verified JWT/RBAC and existing migration; run offline
    tests. Remaining: nine-role permission matrix, departments/groups, real OIDC
-   redirect login, PostgreSQL driver and PostgreSQL CI, MUI/TanStack/Hook Form
-   adoption. Next.js currently supplies routing; React Router is not installed.
+   redirect login and PostgreSQL CI. The requested frontend libraries and local
+   PostgreSQL/Redis/OpenSearch/Celery integration are implemented; see technology-stack.md.
 2. Core: existing upload/library; add persisted collections, favorites, download
    events and metrics with integrated pages. Remaining: standalone creation editor,
    multipart quarantined uploads, all listed formats, advanced saved search,
@@ -72,9 +76,10 @@ completions. Storage bytes count distinct underlying storage keys.
    taxonomy/schema UI, admin policies and notifications.
 4. Intelligence/integrations: retain Bedrock and xAPI groundwork. Remaining:
    editable AI authoring, configured Moodle/CAS/LRS adapters, event-based analytics,
-   charts, scheduled reports and all export formats.
-5. Production: remaining Terraform, PostgreSQL/Redis/OpenSearch/Celery wiring,
-   scanner quarantine, rate limits, backup/recovery, observability, component and
+   additional charts, scheduled reports and all export formats. Reports now include
+   a Recharts completion chart with its data table.
+5. Production: remaining Terraform, managed-service deployment,
+   scanner quarantine, rate limits, backup/recovery, observability, expanded component and
    Playwright/a11y tests, load tests, security review and actual AWS deployment.
 
 Each gate requires runnable code, migrations, permission/failure tests and setup

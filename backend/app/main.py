@@ -1,13 +1,16 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
 from app.api.v1 import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import DomainError
 from app.core.logging import configure_logging
+from app.db.session import get_db
+from app.services.infrastructure import readiness
 
 logger = logging.getLogger("lor.api")
 
@@ -49,6 +52,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "env": settings.env}
 
     app.include_router(api_router, prefix="/api/v1")
+
+    @app.get("/health/ready", tags=["ops"])
+    def ready(db: Session = Depends(get_db)) -> JSONResponse:
+        checks = readiness(db)
+        healthy = all(value == "ok" for value in checks.values())
+        return JSONResponse(
+            status_code=200 if healthy else 503,
+            content={"status": "ok" if healthy else "unavailable", "checks": checks},
+        )
+
     if settings.env == "development":
         # DEV ONLY: token minting. Not registered in any other environment.
         from app.api.v1.dev import router as dev_router

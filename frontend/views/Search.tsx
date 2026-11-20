@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { Suspense, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
+import Link from "@/components/Link";
 
-import { apiFetch, ApiError } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 type Hit = {
   id: string;
@@ -25,44 +26,35 @@ type SearchResponse = {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading search...</p>}>
+    <Suspense
+      fallback={
+        <p className="text-sm text-[var(--muted)]">Loading search...</p>
+      }
+    >
       <SearchContent />
     </Suspense>
   );
 }
 
 function SearchContent() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
-  const [subject, setSubject] = useState(() => searchParams.get("subject") ?? "");
+  const [subject, setSubject] = useState(
+    () => searchParams.get("subject") ?? "",
+  );
   const [format, setFormat] = useState("");
-  const [data, setData] = useState<SearchResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // State is only set inside the async callbacks, so the effect never triggers a synchronous render.
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (subject) params.set("subject", subject);
-    if (format) params.set("format", format);
-    let cancelled = false;
-    apiFetch<SearchResponse>(`/v1/search?${params.toString()}`)
-      .then((result) => {
-        if (!cancelled) {
-          setData(result);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : "Search failed");
-          setData(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [q, subject, format]);
+  const result = useQuery({
+    queryKey: ["search", q, subject, format],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (subject) params.set("subject", subject);
+      if (format) params.set("format", format);
+      return apiFetch<SearchResponse>(`/v1/search?${params.toString()}`);
+    },
+  });
+  const data = result.data;
+  const error = result.error?.message;
 
   return (
     <div className="grid gap-6 md:grid-cols-[14rem_1fr]">
@@ -91,7 +83,9 @@ function SearchContent() {
           aria-label="Search learning objects"
           className="w-full rounded border border-[var(--border)] bg-transparent px-3 py-2"
         />
-        {!data && !error && <p className="text-sm text-[var(--muted)]">Searching...</p>}
+        {!data && !error && (
+          <p className="text-sm text-[var(--muted)]">Searching...</p>
+        )}
         {error && <p className="text-sm text-red-600">{error}</p>}
         {data && (
           <p className="text-sm text-[var(--muted)]">
@@ -100,16 +94,33 @@ function SearchContent() {
         )}
         <ul className="space-y-3">
           {data?.items.map((hit) => (
-            <li key={hit.id} className="rounded border border-[var(--border)] p-4">
-              <h2 className="font-medium"><Link className="text-blue-700 underline" href={`/objects?id=${encodeURIComponent(hit.id)}`}>{hit.title}</Link></h2>
+            <li
+              key={hit.id}
+              className="rounded border border-[var(--border)] p-4"
+            >
+              <h2 className="font-medium">
+                <Link
+                  className="text-blue-700 underline"
+                  href={`/objects?id=${encodeURIComponent(hit.id)}`}
+                >
+                  {hit.title}
+                </Link>
+              </h2>
               {hit.description && (
-                <p className="mt-1 text-sm text-[var(--muted)]">{hit.description}</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {hit.description}
+                </p>
               )}
               <p className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
                 {hit.subject && <span>Subject: {hit.subject}</span>}
-                {hit.learning_resource_type && <span>Format: {hit.learning_resource_type}</span>}
+                {hit.learning_resource_type && (
+                  <span>Format: {hit.learning_resource_type}</span>
+                )}
                 {hit.keywords.map((k) => (
-                  <span key={k} className="rounded bg-[var(--border)] px-2 py-0.5">
+                  <span
+                    key={k}
+                    className="rounded bg-[var(--border)] px-2 py-0.5"
+                  >
                     {k}
                   </span>
                 ))}
@@ -149,7 +160,9 @@ function FacetGroup({
             <button
               onClick={() => onSelect(f.value)}
               aria-pressed={selected === f.value}
-              className={selected === f.value ? "font-semibold" : "text-[var(--muted)]"}
+              className={
+                selected === f.value ? "font-semibold" : "text-[var(--muted)]"
+              }
             >
               {f.value} ({f.count})
             </button>

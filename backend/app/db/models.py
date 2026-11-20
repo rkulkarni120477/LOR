@@ -222,3 +222,17 @@ class Download(Base):
     version_number: Mapped[int] = mapped_column(Integer)
     actor_subject: Mapped[str] = mapped_column(String(255), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SearchIndexJob(Base):
+    """Transactional outbox: content commits never depend on broker availability."""
+
+    __tablename__ = "search_index_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lo_id: Mapped[str] = mapped_column(String(36), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

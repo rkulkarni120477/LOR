@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link from "@/components/Link";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/Icon";
@@ -31,8 +31,8 @@ const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[]
 ];
 
 export function Nav({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const token = useSyncExternalStore(subscribeToSession, readStoredToken, () => null);
   const session = useMemo(() => (token ? sessionFromToken(token) : null), [token]);
   const displayName = session?.email?.split("@")[0] ?? session?.subject ?? "Guest";
@@ -45,7 +45,7 @@ export function Nav({ children }: { children: ReactNode }) {
 
   function signOut() {
     clearToken();
-    router.push("/login");
+    navigate("/login");
   }
 
   return (

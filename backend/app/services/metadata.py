@@ -10,6 +10,7 @@ from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM
 from app.schemas.lom import LOMMetadata
 from app.services import audit
+from app.services.search_index import schedule_index
 
 EDITABLE_STATES = {"draft", "rejected"}
 
@@ -52,5 +53,6 @@ def update_metadata(
         entity_id=lo_id,
         details={"fields": sorted(data.keys())},
     )
+    schedule_index(session, lo_id)
     session.commit()
     return meta

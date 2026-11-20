@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import Link from "@/components/Link";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useSyncExternalStore } from "react";
 
 import { Icon, type IconName } from "@/components/Icon";
-import { ApiError, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import {
   hasAnyRole,
   readStoredToken,
@@ -35,7 +37,12 @@ type DashboardData = {
   token: string;
   content: ContentPage;
   search: SearchResponse;
-  metrics: { total: number; downloads: number; storage_bytes: number; by_status: Record<string, number> };
+  metrics: {
+    total: number;
+    downloads: number;
+    storage_bytes: number;
+    by_status: Record<string, number>;
+  };
 };
 
 type DashboardLink = {
@@ -159,38 +166,31 @@ const ACTIONS: (DashboardLink & { title: string; subtitle: string })[] = [
 ];
 
 export default function Home() {
-  const token = useSyncExternalStore(subscribeToSession, readStoredToken, () => null);
-  const session = useMemo(() => (token ? sessionFromToken(token) : null), [token]);
+  const token = useSyncExternalStore(
+    subscribeToSession,
+    readStoredToken,
+    () => null,
+  );
+  const session = useMemo(
+    () => (token ? sessionFromToken(token) : null),
+    [token],
+  );
   const canBrowse = hasAnyRole(session, ["Learner", "Contributor", "Reviewer"]);
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!canBrowse || !token) return;
-
-    let cancelled = false;
-    Promise.all([
-      apiFetch<ContentPage>("/v1/content?page_size=5"),
-      apiFetch<SearchResponse>("/v1/search?page_size=1"),
-      apiFetch<DashboardData["metrics"]>("/v1/dashboard"),
-    ])
-      .then(([content, search, metrics]) => {
-        if (!cancelled) {
-          setData({ token, content, search, metrics });
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : "Could not load repository overview.");
-          setData(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canBrowse, token]);
+  const navigate = useNavigate();
+  const overview = useQuery({
+    queryKey: ["dashboard"],
+    enabled: canBrowse && !!token,
+    queryFn: async (): Promise<DashboardData> => {
+      const [content, search, metrics] = await Promise.all([
+        apiFetch<ContentPage>("/v1/content?page_size=5"),
+        apiFetch<SearchResponse>("/v1/search?page_size=1"),
+        apiFetch<DashboardData["metrics"]>("/v1/dashboard"),
+      ]);
+      return { token: token!, content, search, metrics };
+    },
+  });
+  const data = overview.data;
+  const error = overview.error?.message;
 
   const currentData = data?.token === token ? data : null;
   const visibleTasks = TASK_LINKS.filter(
@@ -210,7 +210,10 @@ export default function Home() {
           <div className="hero-content">
             <span className="hero-kicker">Your learning workspace</span>
             <h1 id="welcome-heading">Enterprise Learning Object Repository</h1>
-            <p>Create <span>•</span> Organize <span>•</span> Reuse <span>•</span> Publish <span>•</span> Govern</p>
+            <p>
+              Create <span>•</span> Organize <span>•</span> Reuse <span>•</span>{" "}
+              Publish <span>•</span> Govern
+            </p>
           </div>
           <div className="hero-art" aria-hidden="true">
             <div className="hero-orbit orbit-one" />
@@ -227,7 +230,17 @@ export default function Home() {
           </div>
         </section>
 
-        <form action="/search" method="get" className="dashboard-search">
+        <form
+          action="/search"
+          method="get"
+          className="dashboard-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const q =
+              new FormData(event.currentTarget).get("q")?.toString() || "";
+            navigate(`/search?q=${encodeURIComponent(q)}`);
+          }}
+        >
           <label className="search-field">
             <Icon name="search" size={20} />
             <input
@@ -257,12 +270,17 @@ export default function Home() {
           ) : (
             <div className="action-sign-in">
               <p>Sign in to see actions for your repository role.</p>
-              <Link href="/login">Sign in <Icon name="arrow" size={15} /></Link>
+              <Link href="/login">
+                Sign in <Icon name="arrow" size={15} />
+              </Link>
             </div>
           )}
         </section>
 
-        <section className="dashboard-section recent-section" aria-labelledby="recent-heading">
+        <section
+          className="dashboard-section recent-section"
+          aria-labelledby="recent-heading"
+        >
           <SectionHeading
             id="recent-heading"
             title="Recently Added"
@@ -271,7 +289,10 @@ export default function Home() {
           />
           {!canBrowse ? (
             <div className="dashboard-message">
-              <p>Sign in with a repository account to see recent learning objects.</p>
+              <p>
+                Sign in with a repository account to see recent learning
+                objects.
+              </p>
               <Link href="/login">Sign in</Link>
             </div>
           ) : error ? (
@@ -279,7 +300,10 @@ export default function Home() {
               {error}
             </div>
           ) : !currentData ? (
-            <div className="loading-cards" aria-label="Loading recent learning objects">
+            <div
+              className="loading-cards"
+              aria-label="Loading recent learning objects"
+            >
               {[0, 1, 2, 3, 4].map((item) => (
                 <div className="loading-card" key={item} />
               ))}
@@ -288,23 +312,38 @@ export default function Home() {
             <div className="dashboard-message empty-message">
               <p>No learning objects are available in your library yet.</p>
               {hasAnyRole(session, ["Contributor"]) && (
-                <Link href="/contribute">Create the first learning object <Icon name="arrow" size={16} /></Link>
+                <Link href="/contribute">
+                  Create the first learning object{" "}
+                  <Icon name="arrow" size={16} />
+                </Link>
               )}
             </div>
           ) : (
             <div className="object-grid">
               {currentData.content.items.map((item, index) => (
                 <article className="object-card" key={item.id}>
-                  <div className={`object-cover cover-${index % 5}`} aria-hidden="true">
+                  <div
+                    className={`object-cover cover-${index % 5}`}
+                    aria-hidden="true"
+                  >
                     <span className="cover-glow" />
-                    <Icon name={index % 2 === 0 ? "book" : "layers"} size={39} />
+                    <Icon
+                      name={index % 2 === 0 ? "book" : "layers"}
+                      size={39}
+                    />
                     <span className="cover-lines" />
                   </div>
                   <div className="object-card-body">
-                    <span className={`object-status status-${item.status.toLowerCase()}`}>
+                    <span
+                      className={`object-status status-${item.status.toLowerCase()}`}
+                    >
                       {item.status.replaceAll("_", " ")}
                     </span>
-                    <h3 title={item.title}><Link href={`/objects?id=${encodeURIComponent(item.id)}`}>{item.title}</Link></h3>
+                    <h3 title={item.title}>
+                      <Link href={`/objects?id=${encodeURIComponent(item.id)}`}>
+                        {item.title}
+                      </Link>
+                    </h3>
                     <p>Added {formatDate(item.created_at)}</p>
                   </div>
                 </article>
@@ -318,20 +357,28 @@ export default function Home() {
           className="dashboard-section category-section"
           aria-labelledby="category-heading"
         >
-          <SectionHeading id="category-heading" title="Explore by Category" href="/search" />
+          <SectionHeading
+            id="category-heading"
+            title="Explore by Category"
+            href="/search"
+          />
           {currentData?.search.facets.subject.length ? (
             <div className="category-grid">
-              {currentData.search.facets.subject.slice(0, 6).map((facet, index) => (
-                <Link
-                  key={facet.value}
-                  href={`/search?subject=${encodeURIComponent(facet.value)}`}
-                  className={`category-card category-${index % 6}`}
-                >
-                  <Icon name={categoryIcon(index)} size={26} />
-                  <span>{facet.value}</span>
-                  <small>{facet.count} object{facet.count === 1 ? "" : "s"}</small>
-                </Link>
-              ))}
+              {currentData.search.facets.subject
+                .slice(0, 6)
+                .map((facet, index) => (
+                  <Link
+                    key={facet.value}
+                    href={`/search?subject=${encodeURIComponent(facet.value)}`}
+                    className={`category-card category-${index % 6}`}
+                  >
+                    <Icon name={categoryIcon(index)} size={26} />
+                    <span>{facet.value}</span>
+                    <small>
+                      {facet.count} object{facet.count === 1 ? "" : "s"}
+                    </small>
+                  </Link>
+                ))}
             </div>
           ) : (
             <p className="category-empty">
@@ -364,7 +411,9 @@ export default function Home() {
           ) : (
             <div className="task-empty">
               <p>Sign in to see actions available for your role.</p>
-              <Link href="/login">Sign in <Icon name="arrow" size={15} /></Link>
+              <Link href="/login">
+                Sign in <Icon name="arrow" size={15} />
+              </Link>
             </div>
           )}
         </section>
@@ -376,12 +425,40 @@ export default function Home() {
           </div>
           {canBrowse && currentData ? (
             <div className="insight-grid">
-              <Insight icon="layers" value={currentData.content.total.toLocaleString()} label="Objects you can access" />
-              <Insight icon="check" value={currentData.search.total.toLocaleString()} label="Published objects" />
-              <Insight icon="clock" value={(currentData.metrics.by_status.draft || 0).toLocaleString()} label="Draft objects" />
-              <Insight icon="chart" value={currentData.metrics.downloads.toLocaleString()} label="Repository downloads" />
-              <Insight icon="workflow" value={(currentData.metrics.by_status.submitted || 0).toLocaleString()} label="Pending reviews" />
-              <Insight icon="layers" value={`${(currentData.metrics.storage_bytes / 1048576).toFixed(1)} MB`} label="Stored content" />
+              <Insight
+                icon="layers"
+                value={currentData.content.total.toLocaleString()}
+                label="Objects you can access"
+              />
+              <Insight
+                icon="check"
+                value={currentData.search.total.toLocaleString()}
+                label="Published objects"
+              />
+              <Insight
+                icon="clock"
+                value={(
+                  currentData.metrics.by_status.draft || 0
+                ).toLocaleString()}
+                label="Draft objects"
+              />
+              <Insight
+                icon="chart"
+                value={currentData.metrics.downloads.toLocaleString()}
+                label="Repository downloads"
+              />
+              <Insight
+                icon="workflow"
+                value={(
+                  currentData.metrics.by_status.submitted || 0
+                ).toLocaleString()}
+                label="Pending reviews"
+              />
+              <Insight
+                icon="layers"
+                value={`${(currentData.metrics.storage_bytes / 1048576).toFixed(1)} MB`}
+                label="Stored content"
+              />
             </div>
           ) : (
             <div className="insights-locked">
@@ -403,7 +480,9 @@ export default function Home() {
           ) : (
             <div className="task-empty">
               <p>Sign in to access your repository tools.</p>
-              <Link href="/login">Sign in <Icon name="arrow" size={15} /></Link>
+              <Link href="/login">
+                Sign in <Icon name="arrow" size={15} />
+              </Link>
             </div>
           )}
         </section>
@@ -453,9 +532,18 @@ function SectionHeading({
   );
 }
 
-function DashboardRow({ item, compact = false }: { item: DashboardLink; compact?: boolean }) {
+function DashboardRow({
+  item,
+  compact = false,
+}: {
+  item: DashboardLink;
+  compact?: boolean;
+}) {
   return (
-    <Link href={item.href} className={`dashboard-row${compact ? " compact" : ""}`}>
+    <Link
+      href={item.href}
+      className={`dashboard-row${compact ? " compact" : ""}`}
+    >
       <Icon name={item.icon} size={20} />
       <span className="dashboard-row-copy">
         <strong>{item.label}</strong>
@@ -466,7 +554,15 @@ function DashboardRow({ item, compact = false }: { item: DashboardLink; compact?
   );
 }
 
-function Insight({ icon, value, label }: { icon: IconName; value: string; label: string }) {
+function Insight({
+  icon,
+  value,
+  label,
+}: {
+  icon: IconName;
+  value: string;
+  label: string;
+}) {
   return (
     <div className="insight-tile">
       <Icon name={icon} size={24} />
@@ -480,10 +576,21 @@ function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "recently"
-    : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(date);
+    : new Intl.DateTimeFormat("en", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(date);
 }
 
 function categoryIcon(index: number): IconName {
-  const icons: IconName[] = ["shield", "workflow", "users", "tag", "layers", "book"];
+  const icons: IconName[] = [
+    "shield",
+    "workflow",
+    "users",
+    "tag",
+    "layers",
+    "book",
+  ];
   return icons[index % icons.length];
 }

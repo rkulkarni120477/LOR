@@ -1,0 +1,123 @@
+# Development stack. No service data is publicly exposed; host bindings use loopback.
+# Run: docker compose -f infra/docker-compose.yml -f infra/docker-compose.stack.yml up --build
+x-stack-environment: &stack-environment
+  DATABASE_URL: postgresql+psycopg://elor:${ELOR_POSTGRES_PASSWORD:-elor-local-only}@postgres:5432/elor
+  REDIS_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  SEARCH_BACKEND: opensearch
+  OPENSEARCH_URL: http://opensearch:9200
+  OPENSEARCH_INDEX: elor-content-v1
+  CHECKPOINT_DB_PATH: /srv/data/checkpoints.db
+  VECTOR_DB_PATH: /srv/data/vectors.db
+  LOCAL_STORAGE_PATH: /srv/data/storage
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: elor
+      POSTGRES_PASSWORD: ${ELOR_POSTGRES_PASSWORD:-elor-local-only}
+      POSTGRES_DB: elor
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elor -d elor"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  opensearch:
+    image: opensearchproject/opensearch:3.2.0
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "127.0.0.1:59200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    environment:
+      <<: *stack-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=10)"]
+      interval: 15s
+      timeout: 12s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    build:
+      context: ../backend
+    env_file:
+      - ../.env
+    environment:
+      <<: *stack-environment
+    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    volumes:
+      - lor-data:/srv/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping --destination celery@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  beat:
+    build:
+      context: ../backend
+    env_file:
+      - ../.env
+    environment:
+      <<: *stack-environment
+    command: ["celery", "-A", "app.worker:celery_app", "beat", "--loglevel=INFO", "--schedule=/srv/data/celerybeat-schedule"]
+    volumes:
+      - beat-data:/srv/data
+    depends_on:
+      worker:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  opensearch-data:
+  beat-data:

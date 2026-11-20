@@ -1,6 +1,7 @@
 """Shared fixtures. Everything runs offline: in-memory SQLite, generated RSA keys, fake storage."""
 
 import io
+import os
 import sys
 import uuid
 import zipfile
@@ -12,6 +13,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -119,7 +121,12 @@ def token_factory(rsa_key):
 
 @pytest.fixture
 def engine():
-    eng = make_engine("sqlite:///:memory:")
+    url = os.environ.get("ELOR_TEST_DATABASE_URL", "sqlite:///:memory:")
+    if not url.startswith("sqlite") and not (make_url(url).database or "").endswith("_test"):
+        raise RuntimeError("Integration tests require a disposable database ending in _test")
+    eng = make_engine(url)
+    if not url.startswith("sqlite"):
+        Base.metadata.drop_all(eng)
     Base.metadata.create_all(eng)
     yield eng
     eng.dispose()

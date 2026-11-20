@@ -1,10 +1,14 @@
 """Keyword and facet search over published learning objects' metadata."""
 
+from opensearchpy.exceptions import OpenSearchException
 from sqlalchemy import Select, String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
+from app.core.errors import DomainError
 from app.db.models import LearningObject, MetadataLOM
 from app.services.content import PUBLISHED
+from app.services.search_index import matching_ids
 
 
 def _base_query(q: str | None) -> Select:
@@ -14,6 +18,14 @@ def _base_query(q: str | None) -> Select:
         .where(LearningObject.status == PUBLISHED)
     )
     if q:
+        if get_settings().search_backend == "opensearch":
+            try:
+                return query.where(MetadataLOM.lo_id.in_(matching_ids(q.strip())))
+            except OpenSearchException as exc:
+                error = DomainError("Search service unavailable; please retry")
+                error.status_code = 503
+                error.code = "search_unavailable"
+                raise error from exc
         pattern = f"%{q.strip()}%"
         query = query.where(
             or_(
@@ -34,7 +46,8 @@ def search(
     page: int,
     page_size: int,
 ) -> tuple[list[MetadataLOM], int, dict[str, list[tuple[str, int]]]]:
-    filtered = _base_query(q)
+    base_query = _base_query(q)
+    filtered = base_query
     if subject:
         filtered = filtered.where(MetadataLOM.subject == subject)
     if format:
@@ -47,7 +60,7 @@ def search(
 
     # Facet counts are computed over the query without its own facet filter, so users can
     # see the alternatives they could switch to.
-    base = _base_query(q).subquery()
+    base = base_query.subquery()
     facets: dict[str, list[tuple[str, int]]] = {}
     for column_name, column in (
         ("subject", base.c.subject),

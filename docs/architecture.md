@@ -106,3 +106,17 @@ Tier boundaries are enforced by configuration:
 - Ask answers are chunked after generation, not streamed from Bedrock token by token.
 - The ask router is keyword-based. A Claude classifier is planned (see `TODO(reporting)`).
 - Admin satisfies every role check, as a superuser. This is a deliberate choice.
+# Requested stack extension
+
+The current frontend uses React Router for product routes in `frontend/views`, with
+Next.js retained as the host and API proxy. MUI, TanStack Query, React Hook Form,
+and Recharts are integrated into working screens. The full local Compose overlay
+runs PostgreSQL, Redis, OpenSearch, a Celery worker, and one beat scheduler.
+
+Repository changes write `search_index_jobs` in their database transaction. Celery
+projects committed rows into OpenSearch and retries failures. Search rechecks current
+publication in PostgreSQL before returning metadata or counts. Redis stores task
+messages and results. SQLite remains the lightweight development/test option.
+
+See [technology-stack.md](technology-stack.md) for configuration and verification.
+The diagrams above describe the original lightweight path where applicable.

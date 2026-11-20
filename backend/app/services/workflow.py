@@ -15,6 +15,7 @@ from app.core.errors import InvalidTransitionError, NotFoundError, SeparationOfD
 from app.core.security import Principal, Role
 from app.db.models import LearningObject, WorkflowState
 from app.services import audit
+from app.services.search_index import schedule_index
 
 DRAFT: Final = "draft"
 SUBMITTED: Final = "submitted"
@@ -70,6 +71,7 @@ def transition(
         entity_id=lo.id,
         details={"from": current, "to": target, "comment": comment},
     )
+    schedule_index(session, lo.id)
     session.commit()
     return lo
 

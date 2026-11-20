@@ -1,13 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 import { DevTokenPanel } from "@/components/DevTokenPanel";
 import { saveToken, sessionFromToken } from "@/lib/auth";
 
 export default function LoginPage() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -19,7 +19,7 @@ export default function LoginPage() {
       return;
     }
     saveToken(trimmed);
-    router.push("/search");
+    navigate("/search");
   }
 
   function submit(event: React.FormEvent) {

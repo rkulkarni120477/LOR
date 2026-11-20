@@ -1,7 +1,9 @@
 # Enterprise Learning Object Repository (LOR)
 
-A monorepo with a FastAPI backend, a Next.js frontend, LangGraph agents on Amazon Bedrock, and
-SQLite storage that can move to PostgreSQL. This is a first runnable version. See
+A monorepo with a FastAPI backend, a React/TypeScript frontend hosted by Next.js,
+React Router navigation, MUI, TanStack Query, React Hook Form, Recharts, and
+LangGraph agents on Amazon Bedrock. PostgreSQL, Redis, OpenSearch and Celery are
+configured in the full local stack; SQLite remains available for lightweight development. See
 [docs/architecture.md](docs/architecture.md) for the diagram and request flows.
 
 ## Quick start (local, no AWS needed)
@@ -58,6 +60,18 @@ shown above. `Makefile` documents them.
 
 ## Docker
 
+For the requested PostgreSQL/Redis/OpenSearch/Celery stack:
+
+```bash
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.stack.yml up --build -d
+```
+
+See [technology stack setup and verification](docs/technology-stack.md) for seed,
+reindex, worker, configuration, and test commands. The full stack starts a separate
+PostgreSQL repository and preserves the existing SQLite database.
+
+For the lightweight SQLite stack:
+
 ```bash
 docker compose -f infra/docker-compose.yml up --build
 # Backend:  http://localhost:8000/health
@@ -77,8 +91,8 @@ standard AWS chain (environment, profile, or IAM role).
 
 ```
 backend/   FastAPI app, Alembic migrations, tests, dev scripts
-frontend/  Next.js App Router, Tailwind, API proxy route
-infra/     docker-compose.yml, aws/README.md (ECS / App Runner notes)
+frontend/  React Router views, MUI, TanStack Query, forms/charts, Next.js host/API proxy
+infra/     SQLite Compose, full-stack Compose overlay, AWS deployment notes
 docs/      architecture.md (Mermaid diagram, request flows, legend)
 .vscode/   launch configs for uvicorn and Next.js, recommended extensions, tasks
 ```
@@ -112,7 +126,7 @@ docs/      architecture.md (Mermaid diagram, request flows, legend)
 | LMS, HR sync, vendor integrations | **Stub** | Documented TODOs |
 | Enterprise SSO sign-in (OIDC auth-code + PKCE) | **Requires SSO config** | Paste-a-token sign-in for now |
 | AWS deployment (ECS / App Runner) | **Requires AWS config** | Documentation in `infra/aws/README.md` |
-| PostgreSQL | **Not yet** | URL is swappable; see the AWS notes |
+| PostgreSQL / Redis / OpenSearch / Celery | Implemented locally | Compose overlay, psycopg driver, transactional indexing outbox and worker |
 
 ## Known limitations
 
@@ -124,7 +138,7 @@ docs/      architecture.md (Mermaid diagram, request flows, legend)
   file record is preserved. Full immutable metadata snapshots remain future work.
 - Dashboard bytes count distinct storage keys. Downloads are delivery events, not completions.
 
-- SQLite allows one writer. Run a single backend instance, or move to PostgreSQL first.
+- SQLite allows one writer. Use the full PostgreSQL stack for concurrent repository instances.
 - Ask answers are generated in one call, then chunked into SSE events.
 - The ask router uses keywords, so unusual phrasings may not reach the right template.
 - The taxonomy is a small sample. Replace it with your skills framework.

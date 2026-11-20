@@ -12,6 +12,7 @@ from app.core.errors import NotFoundError, ValidationFailure
 from app.core.security import Principal, Role
 from app.db.models import LearningObject, MetadataLOM, Version
 from app.services import audit
+from app.services.search_index import schedule_index
 from app.storage.base import StorageBackend
 
 STATUS_DRAFT = "draft"
@@ -82,6 +83,7 @@ def create_learning_object(
         entity_id=lo_id,
         details={"filename": safe_name, "size_bytes": len(data)},
     )
+    schedule_index(session, lo_id)
     session.commit()
     return get_learning_object(session, lo_id, actor)
 
