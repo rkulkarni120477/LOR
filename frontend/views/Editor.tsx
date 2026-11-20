@@ -51,6 +51,7 @@ type Form = {
 };
 type Detail = {
   id: string;
+  status?: string;
   title: string;
   kind: string;
   revision: number;
@@ -190,6 +191,8 @@ function readBackup(key: string, kind: Kind, server: Form): Form | null {
 }
 
 export default function Editor() {
+  const navigate = useNavigate();
+  const [copyError, setCopyError] = useState<string | null>(null);
   const params = useParams<{ id?: string; kind?: string }>();
   const id = params.id ?? null;
   const newKind = (params.kind as Kind) || "rich_text";
@@ -204,6 +207,38 @@ export default function Editor() {
   if (id && !detail.data) return <Typography>Loading…</Typography>;
 
   const kind: Kind = (detail.data?.kind as Kind) ?? newKind;
+  if (
+    detail.data?.status &&
+    !["draft", "rejected"].includes(detail.data.status)
+  )
+    return (
+      <Stack spacing={2}>
+        <Alert severity="info">
+          This content is {detail.data.status}. Create an editable copy to
+          preserve its reviewed version.
+        </Alert>
+        {copyError && <Alert severity="error">{copyError}</Alert>}
+        <Button
+          onClick={async () => {
+            try {
+              const copy = await postJson<{ id: string }>(
+                `/v1/library/${id}/duplicate`,
+                {},
+              );
+              navigate(`/library/${copy.id}/edit`);
+            } catch (reason) {
+              setCopyError(
+                reason instanceof Error
+                  ? reason.message
+                  : "Could not create a copy",
+              );
+            }
+          }}
+        >
+          Create editable copy
+        </Button>
+      </Stack>
+    );
   return (
     <EditorBody
       key={id ?? `new-${newKind}`}
@@ -414,7 +449,9 @@ function EditorBody({
                 onClick={() => {
                   setForm(restorable);
                   if (editorRef.current)
-                    editorRef.current.innerHTML = restorable.html;
+                    editorRef.current.innerHTML = DOMPurify.sanitize(
+                      restorable.html,
+                    );
                   setRestorable(null);
                 }}
               >

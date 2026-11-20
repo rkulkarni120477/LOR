@@ -20,6 +20,7 @@ backend/vectors.db
 # Node
 node_modules/
 frontend/public/h5p-runtime/
+frontend/public/pdf-runtime/
 .next/
 frontend/out/
 *.tsbuildinfo

@@ -35,7 +35,9 @@ class Metadata(BaseModel):
     subject: str | None = Field(default=None, max_length=255)
     learning_resource_type: str | None = Field(default=None, max_length=100)
     keywords: list[str] = Field(default_factory=list, max_length=30)
-    language: str | None = Field(default=None, max_length=16)
+    language: str | None = Field(
+        default=None, max_length=16, pattern=r"^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+    )
     license: str | None = Field(default=None, max_length=255)
     difficulty: Literal["beginner", "intermediate", "advanced"] | None = None
     duration_minutes: int | None = Field(default=None, ge=0, le=100000)
@@ -97,7 +99,9 @@ class DraftIn(BaseModel):
     passing_score: int | None = Field(default=None, ge=0, le=100)
     questions: list[DraftQuestion] | None = Field(default=None, max_length=200)
     is_template: bool | None = None
-    language: str | None = Field(default=None, max_length=16)
+    language: str | None = Field(
+        default=None, max_length=16, pattern=r"^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+    )
     license: str | None = Field(default=None, max_length=255)
     difficulty: Literal["beginner", "intermediate", "advanced"] | None = None
     duration_minutes: int | None = Field(default=None, ge=0, le=100000)
@@ -143,7 +147,9 @@ class LibraryFilters(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     keywords: str | None = Field(default=None, max_length=500)
     subject: str | None = Field(default=None, max_length=255)
-    language: str | None = Field(default=None, max_length=16)
+    language: str | None = Field(
+        default=None, max_length=16, pattern=r"^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+    )
     author: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, max_length=32)
     department_id: int | None = Field(default=None, ge=1)

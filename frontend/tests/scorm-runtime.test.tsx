@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { resolve } from "node:path";
 
 function runtime(status = 200) {
   const messages: string[] = [];
@@ -17,7 +18,7 @@ function runtime(status = 200) {
     XMLHttpRequest: Xhr,
   };
   const source = readFileSync(
-    new URL("../../backend/app/assets/player.js", import.meta.url),
+    resolve(process.cwd(), "../backend/app/assets/player.js"),
     "utf8",
   ).replace(
     "__ELOR_CONFIG__",

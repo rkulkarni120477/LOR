@@ -94,7 +94,9 @@ def test_advanced_filters_saved_search_and_ordering(client, token_factory):
             "lesson.docx",
             archive(
                 {
-                    "word/document.xml": "<document><p><t>Quasar searchable document</t></p></document>"
+                    "word/document.xml": (
+                        "<document><p><t>Quasar searchable document</t></p></document>"
+                    )
                 }
             ),
             "document",
@@ -120,7 +122,8 @@ def test_advanced_filters_saved_search_and_ordering(client, token_factory):
         ),
         (
             "lesson.html",
-            b"<!doctype html><h1>Quasar interactive simulation</h1><script>window.example=1</script>",
+            b"<!doctype html><h1>Quasar interactive simulation</h1>"
+            b"<script>window.example=1</script>",
             "package",
         ),
     ],
@@ -263,3 +266,63 @@ def test_replacement_preserves_history_and_rejects_stale_edit(client, token_fact
         ).status_code
         == 200
     )
+
+
+def test_builtin_templates_and_incomplete_draft(client, token_factory):
+    owner = auth(token_factory, ["Content Creator"])
+    catalog = client.get("/api/v1/library/templates/catalog", headers=owner).json()["items"]
+    assert {item["kind"] for item in catalog} == {"rich_text", "quiz", "assessment"}
+    for template in catalog:
+        response = client.post(f"/api/v1/library/templates/{template['key']}", headers=owner)
+        assert response.status_code == 201, response.text
+        assert response.json()["is_template"] is False
+    item = quiz(client, owner)
+    saved = client.put(
+        f"/api/v1/library/{item['id']}/draft",
+        headers=owner,
+        json={"revision": 1, "questions": [{"prompt": "", "options": ["", ""], "correct": 0}]},
+    )
+    assert saved.status_code == 200, saved.text
+    from app.core.errors import ValidationFailure
+    from app.db.models import LearningObject
+    from app.services.library import validate_for_submission
+
+    unfinished = LearningObject(
+        kind="quiz", body={"questions": [{"prompt": "", "options": ["", ""], "correct": 0}]}
+    )
+    with pytest.raises(ValidationFailure):
+        validate_for_submission(unfinished)
+
+
+def test_package_xapi_state_and_statement_conflicts(client, token_factory, db_session):
+    identity = upload(client, token_factory, "course.zip", archive({"index.html": "<p>Course</p>"}))
+    url = ticket(client, token_factory, identity)
+    base = url.rsplit("/", 1)[0] + "/"
+    endpoint = base + "__lrs/statements"
+    statement = {"id": "test-statement", "verb": {"id": "completed"}, "object": {"id": "lesson"}}
+    result = client.post(endpoint, json=statement)
+    assert result.status_code == 200, result.text
+    assert client.get(endpoint).json()["statements"] == [statement]
+    assert client.post(endpoint, json={**statement, "verb": {"id": "changed"}}).status_code == 409
+    state = base + "__lrs/activities/state?stateId=progress"
+    assert client.put(state, json={"page": 3}).status_code == 204
+    assert client.get(state).json() == {"page": 3}
+    assert client.options(endpoint).headers["access-control-allow-origin"] == "*"
+
+
+def test_authored_snapshot_restore_refreshes_search(client, token_factory):
+    owner = auth(token_factory, ["Content Creator"])
+    item = rich(client, owner, html="<p>Originalquasar</p>")
+    changed = client.put(
+        f"/api/v1/library/{item['id']}/draft",
+        headers=owner,
+        json={"revision": 1, "html": "<p>Replacementnebula</p>"},
+    )
+    assert changed.status_code == 200
+    restored = client.post(f"/api/v1/versions/{item['id']}/restore", headers=owner, json={"seq": 1})
+    assert restored.status_code == 200, restored.text
+    detail = client.get(f"/api/v1/library/{item['id']}", headers=owner).json()
+    assert detail["body"]["html"] == "<p>Originalquasar</p>"
+    assert detail["revision"] == 3
+    assert client.get("/api/v1/library?q=Originalquasar", headers=owner).json()["total"] == 1
+    assert client.get("/api/v1/library?q=Replacementnebula", headers=owner).json()["total"] == 0

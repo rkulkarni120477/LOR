@@ -1,0 +1,23 @@
+▲ Next.js 16.4.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.5:3000
+✓ Ready in 7.1s
+✓ Running next.config.ts took 1275ms
+Creating turbopack project {
+  dir: 'C:\\Users\\RahulSudhakar\\source\\repos\\LOR\\frontend',
+  testMode: true
+}
+
+○ Compiling /[[...path]] ...
+ GET / 200 in 2.5s (next.js: 1818ms, application-code: 664ms)
+ GET /favicon.ico 200 in 59ms (next.js: 11ms, application-code: 49ms)
+ GET /api/v1/branding 200 in 2.2s (next.js: 1261ms, application-code: 970ms)
+ GET /api/v1/notifications?limit=30 200 in 2.3s (next.js: 1281ms, application-code: 1009ms)
+ GET /api/v1/auth/me 200 in 2.4s (next.js: 1372ms, application-code: 1011ms)
+ GET /api/v1/dashboard 200 in 2.3s (next.js: 1264ms, application-code: 1015ms)
+ GET /api/v1/content?page_size=5 200 in 2.3s (next.js: 1275ms, application-code: 1027ms)
+ GET /api/v1/search?page_size=1 200 in 2.3s (next.js: 1270ms, application-code: 1029ms)
+ GET /api/v1/auth/me 200 in 44ms (next.js: 11ms, application-code: 34ms)
+  Turbopack has seen frequent file updates and is waiting for the filesystem to settle (0.5s elapsed so far; last modified: "\\\\?\\C:\\Users\\RahulSudhakar\\source\\repos\\LOR\\frontend\\public\\pdf-runtime\\cmaps\\UniJIS-UCS2-H.bcmap").
+ GET /create 200 in 144ms (next.js: 25ms, application-code: 119ms)
+ GET /library 200 in 104ms (next.js: 5ms, application-code: 99ms)

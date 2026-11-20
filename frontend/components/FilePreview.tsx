@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Stack, Typography } from "@mui/material";
 import { postJson } from "@/lib/api";
+import { PdfPreview } from "@/components/PdfPreview";
 export function FilePreview({ id }: { id: string }) {
   const preview = useQuery({
     queryKey: ["file-preview-session", id],
@@ -25,7 +26,9 @@ export function FilePreview({ id }: { id: string }) {
       {value && (
         <>
           <Typography variant="body2">{value.filename}</Typography>
-          {value.mode === "video" ? (
+          {value.mode === "pdf" ? (
+            <PdfPreview url={value.url} />
+          ) : value.mode === "video" ? (
             <video
               controls
               preload="metadata"

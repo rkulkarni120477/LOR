@@ -62,6 +62,8 @@ def validate(filename: str, data: bytes, limits: Limits) -> PackageReport:
             for path in required:
                 if path not in archive.namelist():
                     report.errors.append(f"Missing {path}")
+                elif archive.getinfo(path).file_size > 10 * 1024 * 1024:
+                    report.errors.append(f"Required manifest is too large: {path}")
             if report.errors:
                 return report
             if ext in {".docx", ".pptx"}:

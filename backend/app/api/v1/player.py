@@ -152,7 +152,10 @@ def preflight(lo_id: str, token: str, path: str, db: Session = Depends(get_db)):
         headers={
             **player.headers(),
             "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Experience-API-Version, If-Match, If-None-Match, Range",
+            "Access-Control-Allow-Headers": (
+                "Content-Type, Authorization, "
+                "X-Experience-API-Version, If-Match, If-None-Match, Range"
+            ),
             "Access-Control-Max-Age": "300",
         },
     )

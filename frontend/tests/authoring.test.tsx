@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
@@ -64,10 +70,9 @@ describe("complete authoring workflows", () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "HTML source" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "HTML source" }),
-      '<h2>Example</h2><img src="x" onerror="alert(1)">',
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "HTML source" }), {
+      target: { value: '<h2>Example</h2><img src="x" onerror="alert(1)">' },
+    });
     await user.click(screen.getByRole("button", { name: "Visual editor" }));
     const editor = screen.getByRole("textbox", { name: "Content" });
     expect(editor.innerHTML).toContain("Example");

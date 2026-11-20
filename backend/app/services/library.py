@@ -223,7 +223,11 @@ def save_draft(
         raise ValidationFailure("only rich text, quizzes and assessments can be autosaved")
     accepted = session.execute(
         update(LearningObject)
-        .where(LearningObject.id == lo_id, LearningObject.revision == data.revision)
+        .where(
+            LearningObject.id == lo_id,
+            LearningObject.revision == data.revision,
+            LearningObject.status.in_(["draft", "rejected"]),
+        )
         .values(revision=LearningObject.revision + 1)
     )
     if accepted.rowcount != 1:

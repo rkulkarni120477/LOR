@@ -14,6 +14,7 @@ Approvals
     changed since that snapshot.
 """
 
+import copy
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -71,7 +72,7 @@ def _content(lo: LearningObject) -> dict[str, Any]:
         "lom": lom,
         "file_version": max(numbers) if numbers else None,
         "file_sha256": latest.sha256 if latest is not None else None,
-        "body": lo.body,
+        "body": copy.deepcopy(lo.body),
         "kind": lo.kind,
     }
 
@@ -317,8 +318,6 @@ def restore(session: Session, actor: Principal, lo: LearningObject, seq: int) ->
         raise ConflictError("this snapshot fails its integrity check and cannot be restored")
     content = row.content
     if "body" in content:
-        import copy
-
         lo.body = copy.deepcopy(content["body"])
         lo.kind = content.get("kind", lo.kind)
         lo.revision += 1
@@ -333,6 +332,10 @@ def restore(session: Session, actor: Principal, lo: LearningObject, seq: int) ->
         raise ConflictError("item has no metadata record")
     taxonomy._write_record(meta, lom)
     lo.title = content.get("title") or lo.title
+    if lo.kind in {"rich_text", "quiz", "assessment"}:
+        from app.services.library import _refresh_search
+
+        _refresh_search(lo)
     file_note = "metadata restored"
     target_version = content.get("file_version")
     current_numbers = {v.version_number for v in lo.versions}
@@ -349,6 +352,10 @@ def restore(session: Session, actor: Principal, lo: LearningObject, seq: int) ->
                     size_bytes=source.size_bytes,
                     sha256=source.sha256,
                     created_by=actor.subject,
+                    scan_status=source.scan_status,
+                    validation=copy.deepcopy(source.validation),
+                    package_metadata=copy.deepcopy(source.package_metadata),
+                    thumbnail_key=source.thumbnail_key,
                 )
             )
             file_note = f"metadata and file version {target_version} restored"
