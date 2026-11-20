@@ -40,6 +40,7 @@ class Principal(BaseModel):
     group_ids: frozenset[int] = Field(default_factory=frozenset)
     department_ids: frozenset[int] = Field(default_factory=frozenset)
     expires_at: datetime | None = None
+    source_roles: frozenset[str] | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -179,6 +180,7 @@ def get_principal(
 
 
 def effective_principal(db, subject, email, roles, expires_at=None):
+    source_roles = roles
     user = db.scalar(select(User).where(User.subject == subject))
     groups = []
     departments = set()
@@ -210,6 +212,7 @@ def effective_principal(db, subject, email, roles, expires_at=None):
         expires_at=expires_at,
         group_ids=frozenset(g.id for g in groups),
         department_ids=frozenset(departments),
+        source_roles=source_roles,
     )
 
 

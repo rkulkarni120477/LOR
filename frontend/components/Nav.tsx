@@ -20,13 +20,12 @@ import { NotificationsMenu } from "@/components/NotificationsMenu";
 const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[] = [
   { href: "/", label: "Home", icon: "home" },
   {
-    href: "/search",
+    href: "/library",
     label: "Content Library",
     icon: "library",
     roles: ["Learner", "Contributor", "Reviewer"],
   },
-  { href: "/library", label: "Library", icon: "library", roles: ["Learner", "Contributor", "Reviewer"] },
-  { href: "/contribute", label: "Create", icon: "plus", roles: ["Contributor"] },
+  { href: "/create", label: "Create", icon: "plus", roles: ["Contributor"] },
   { href: "/contribute", label: "Upload", icon: "upload", roles: ["Contributor"] },
   { href: "/review", label: "Workflows", icon: "workflow", roles: ["Reviewer"] },
   { href: "/collections", label: "Collections", icon: "folder", roles: ["Learner", "Contributor", "Reviewer"] },
@@ -100,8 +99,9 @@ export function Nav({ children }: { children: ReactNode }) {
           <nav aria-label="Main navigation">
             {LINKS.filter((link) => !link.roles || hasAnyRole(session, link.roles)).map(
               (link, index) => {
-                const active =
-                  link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                const active = link.href === "/create" ? pathname === "/create" || pathname.startsWith("/library/new/")
+                  : link.href === "/library" ? pathname === "/library" || pathname.startsWith("/library/") && !pathname.startsWith("/library/new/")
+                  : link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
                 return (
                   <Link
                     key={`${link.href}-${link.label}`}

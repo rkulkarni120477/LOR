@@ -42,6 +42,7 @@ def ensure_index(client=None):
                             "keywords": {"type": "text"},
                             "subject": {"type": "keyword"},
                             "format": {"type": "keyword"},
+                            "content": {"type": "text"},
                         },
                     },
                 },
@@ -49,6 +50,8 @@ def ensure_index(client=None):
         except RequestError as exc:
             if exc.error != "resource_already_exists_exception":
                 raise
+    else:
+        client.indices.put_mapping(index=index, body={"properties": {"content": {"type": "text"}}})
 
 
 def schedule_index(session: Session, lo_id: str):
@@ -64,7 +67,13 @@ def index_object(session: Session, lo_id: str, client=None):
         .where(LearningObject.id == lo_id)
         .options(selectinload(LearningObject.metadata_record))
     )
-    if lo is None or lo.status != "published" or lo.metadata_record is None:
+    if (
+        lo is None
+        or lo.status != "published"
+        or lo.metadata_record is None
+        or lo.deleted_at
+        or lo.archived_at
+    ):
         client.delete(index=index, id=lo_id, ignore=[404], refresh="wait_for")
         return
     meta = lo.metadata_record
@@ -78,6 +87,7 @@ def index_object(session: Session, lo_id: str, client=None):
             "keywords": meta.keywords or [],
             "subject": meta.subject,
             "format": meta.learning_resource_type,
+            "content": lo.search_text or "",
         },
     )
 
@@ -99,7 +109,7 @@ def matching_ids(q: str) -> list[str]:
                 "query": {
                     "multi_match": {
                         "query": q,
-                        "fields": ["title^3", "description", "keywords^2"],
+                        "fields": ["title^3", "description", "keywords^2", "content"],
                         "operator": "and",
                     }
                 },

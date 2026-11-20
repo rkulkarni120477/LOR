@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-const FORWARD_REQUEST_HEADERS = ["authorization", "content-type", "accept", "cookie", "origin"];
+const FORWARD_REQUEST_HEADERS = ["authorization", "content-type", "accept", "cookie", "origin", "range"];
 const FORWARD_RESPONSE_HEADERS = [
   "content-type",
   "cache-control",
@@ -15,6 +15,12 @@ const FORWARD_RESPONSE_HEADERS = [
   "x-content-type-options",
   "location",
   "referrer-policy",
+  "access-control-allow-origin",
+  "content-range",
+  "accept-ranges",
+  "access-control-allow-methods",
+  "access-control-allow-headers",
+  "access-control-max-age",
 ];
 
 type Context = { params: Promise<{ path: string[] }> };
@@ -64,3 +70,4 @@ export const GET = proxy;
 export const POST = proxy;
 export const PUT = proxy;
 export const DELETE = proxy;
+export const OPTIONS = proxy;

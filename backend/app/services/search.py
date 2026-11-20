@@ -41,6 +41,7 @@ def _base_query(q: str | None, actor: Principal | None = None) -> Select:
                 or_(
                     MetadataLOM.title.ilike(pattern),
                     MetadataLOM.description.ilike(pattern),
+                    LearningObject.search_text.ilike(pattern),
                     cast(MetadataLOM.keywords, String).ilike(pattern),
                     LearningObject.search_text.like(pattern),
                 )

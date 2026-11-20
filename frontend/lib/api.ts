@@ -43,6 +43,7 @@ export async function apiFetch<T>(
       };
       if (body.message) message = body.message;
       else if (typeof body.detail === "string") message = body.detail;
+      else if (Array.isArray(body.detail)) message = body.detail.map((item: {loc?: string[]; msg?: string}) => `${item.loc?.slice(1).join(".") || "Input"}: ${item.msg || "Invalid value"}`).join("; ");
     } catch {
       // non-JSON error body
     }

@@ -55,7 +55,7 @@ type DashboardLink = {
 
 const TASK_LINKS: DashboardLink[] = [
   {
-    href: "/contribute",
+    href: "/create",
     label: "Create learning object",
     description: "Add new content to the repository",
     icon: "plus",
@@ -110,7 +110,7 @@ const QUICK_LINKS: DashboardLink[] = [
 
 const ACTIONS: (DashboardLink & { title: string; subtitle: string })[] = [
   {
-    href: "/contribute",
+    href: "/create",
     title: "Create",
     subtitle: "Learning Object",
     label: "Create learning object",

@@ -12,7 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import DuplicateError, NotFoundError, QuarantinedError, ValidationFailure
 from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM, Version
-from app.services import audit, package_validation, versioning
+from app.services import audit, formats, package_validation, versioning
 from app.services.access import read_condition
 from app.services.malware import build_scanner
 from app.services.search_index import schedule_index
@@ -23,13 +23,17 @@ STATUS_DRAFT = "draft"
 PUBLISHED = "published"
 
 # TODO: move to settings once the accepted package types are confirmed with content owners.
-ALLOWED_EXTENSIONS = {".zip", ".pdf"}
-ALLOWED_CONTENT_TYPES = {
-    "application/zip",
-    "application/x-zip-compressed",
-    "application/pdf",
-    "application/octet-stream",
-}
+ALLOWED_EXTENSIONS = set(formats.TYPES)
+ALLOWED_CONTENT_TYPES = (
+    {
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/pdf",
+        "application/octet-stream",
+    }
+    | set(formats.TYPES.values())
+    | {"application/vnd.h5p"}
+)
 
 
 def _safe_filename(name: str) -> str:
@@ -92,6 +96,7 @@ def ingest(
     package validation (invalid packages are rejected and nothing is stored), duplicate detection
     by SHA-256, then storage with metadata and a thumbnail."""
     safe_name = check_file_type(filename, content_type)
+    content_type = formats.TYPES[PurePosixPath(safe_name).suffix.lower()]
     if not data:
         raise ValidationFailure("uploaded package is empty")
     if len(data) > max_bytes:
@@ -132,7 +137,7 @@ def ingest(
         session.commit()
         return get_learning_object(session, lo_id, actor)
 
-    report = package_validation.validate(
+    report = formats.validate(
         safe_name,
         data,
         package_validation.Limits(
@@ -171,6 +176,7 @@ def ingest(
     package_meta = dict(report.metadata)
     package_meta["size_bytes"] = len(data)
     lo = _new_learning_object(session, lo_id, title, actor, STATUS_DRAFT)
+    lo.search_text = (title + " " + formats.extract_text(safe_name, data)).lower()
     lo.versions.append(
         _version(
             safe_name,

@@ -26,6 +26,49 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+class AssessmentAttempt(Base):
+    __tablename__ = "assessment_attempts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    actor_subject: Mapped[str] = mapped_column(String(255), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    answers: Mapped[list[int]] = mapped_column(JSON)
+    score: Mapped[float] = mapped_column(Float)
+    passed: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PreviewTicket(Base):
+    __tablename__ = "preview_tickets"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    version_id: Mapped[int] = mapped_column(ForeignKey("versions.id", ondelete="CASCADE"))
+    subject: Mapped[str] = mapped_column(String(255))
+    roles: Mapped[list[str]] = mapped_column(JSON)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PackageActivity(Base):
+    __tablename__ = "package_activity"
+    __table_args__ = (
+        UniqueConstraint("lo_id", "version_id", "subject", name="uq_package_activity"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    version_id: Mapped[int] = mapped_column(ForeignKey("versions.id", ondelete="CASCADE"))
+    subject: Mapped[str] = mapped_column(String(255))
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -259,9 +302,7 @@ class CollectionView(Base):
         ForeignKey("collections.id", ondelete="CASCADE"), index=True
     )
     viewer_subject: Mapped[str] = mapped_column(String(255), index=True)
-    viewed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, index=True
-    )
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 class RecentAccess(Base):
@@ -479,9 +520,7 @@ class PolicyStage(Base):
     # Named deciders. Empty means any holder of the permission may decide.
     assignees: Mapped[list[str]] = mapped_column(JSON, default=list)
     sla_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    escalation_role: Mapped[str] = mapped_column(
-        String(64), default="Repository Administrator"
-    )
+    escalation_role: Mapped[str] = mapped_column(String(64), default="Repository Administrator")
 
 
 class ReviewCase(Base):
@@ -658,7 +697,9 @@ class ScheduledReport(Base):
     cadence: Mapped[str] = mapped_column(String(8), default="weekly")
     recipients: Mapped[list[str]] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)  # noqa: E501
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )  # noqa: E501
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -719,7 +760,9 @@ class Branding(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     app_name: Mapped[str] = mapped_column(String(80), default="ELOR")
-    tagline: Mapped[str] = mapped_column(String(160), default="Enterprise Learning Object Repository")  # noqa: E501
+    tagline: Mapped[str] = mapped_column(
+        String(160), default="Enterprise Learning Object Repository"
+    )  # noqa: E501
     primary_color: Mapped[str] = mapped_column(String(7), default="#1762c4")
     logo_url: Mapped[str] = mapped_column(String(1024), default="")
     footer_text: Mapped[str] = mapped_column(String(300), default="")
@@ -748,4 +791,3 @@ class AISuggestion(Base):
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-

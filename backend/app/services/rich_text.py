@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 ALLOWED_TAGS = {
     "p", "br", "strong", "b", "em", "i", "u", "h1", "h2", "h3",
     "ul", "ol", "li", "blockquote", "code", "pre", "a", "hr",
+    "table", "thead", "tbody", "tr", "th", "td",
 }  # fmt: skip
 VOID_TAGS = {"br", "hr"}
 # Elements whose text content must not appear anywhere in the output.

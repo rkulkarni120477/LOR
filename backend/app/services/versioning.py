@@ -71,6 +71,8 @@ def _content(lo: LearningObject) -> dict[str, Any]:
         "lom": lom,
         "file_version": max(numbers) if numbers else None,
         "file_sha256": latest.sha256 if latest is not None else None,
+        "body": lo.body,
+        "kind": lo.kind,
     }
 
 
@@ -314,6 +316,12 @@ def restore(session: Session, actor: Principal, lo: LearningObject, seq: int) ->
     if not verified(row):
         raise ConflictError("this snapshot fails its integrity check and cannot be restored")
     content = row.content
+    if "body" in content:
+        import copy
+
+        lo.body = copy.deepcopy(content["body"])
+        lo.kind = content.get("kind", lo.kind)
+        lo.revision += 1
     lom = dict(content.get("lom") or {})
     problems = taxonomy.validate_metadata(session, lom)
     if problems:

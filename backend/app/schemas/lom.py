@@ -19,6 +19,9 @@ class LOMMetadata(BaseModel):
     license: str | None = Field(default=None, max_length=255)
     rights_description: str | None = Field(default=None, max_length=5000)
     duration: str | None = Field(default=None, max_length=64, description="ISO 8601 duration")
+    difficulty: str | None = Field(default=None, max_length=32)
+    duration_minutes: int | None = Field(default=None, ge=0, le=100000)
+    learning_standard: str | None = Field(default=None, max_length=100)
     alt_text_provided: bool | None = None
     captions_provided: bool | None = None
     # Values for the custom fields defined under Schema. Checked against those definitions on save.

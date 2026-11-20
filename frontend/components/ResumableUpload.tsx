@@ -343,10 +343,10 @@ export function ResumableUpload({
         />
       </label>
       <label className="text-sm">
-        Package (.zip or .pdf)
+        Content file (document, media, HTML5, SCORM, xAPI, cmi5, or H5P)
         <input
           type="file"
-          accept=".zip,.pdf"
+          accept=".zip,.pdf,.docx,.pptx,.mp4,.mp3,.png,.jpg,.jpeg,.gif,.webp,.svg,.html,.htm,.h5p"
           disabled={busy || disabled}
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);

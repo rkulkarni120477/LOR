@@ -320,6 +320,9 @@ def submit(
 ) -> LearningObject:
     require_object(session, lo_id, actor, "edit")
     lo = _load(session, lo_id)
+    from app.services.library import validate_for_submission
+
+    validate_for_submission(lo)
     if open_case(session, lo_id) is not None:
         raise InvalidTransitionError("this item already has a review in progress")
     resolved_id, policy_name, stages = resolve_policy(session, policy_id)
@@ -362,8 +365,9 @@ def resubmit(
     if previous is None or (previous.submitted_by != actor.subject and not _is_super(actor)):
         raise HTTPException(403, "only the submitter can resubmit")
     # A resubmission keeps the review path it was on, unless the submitter names another policy.
-    return submit(session, lo_id, actor, comment,
-                  policy_id if policy_id is not None else previous.policy_id)
+    return submit(
+        session, lo_id, actor, comment, policy_id if policy_id is not None else previous.policy_id
+    )
 
 
 def withdraw(session: Session, lo_id: str, actor: Principal, comment: str | None = None):

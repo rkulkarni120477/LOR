@@ -29,6 +29,7 @@ dependencies = [
   "redis==8.1.0",
   "opensearch-py==3.2.0",
   "celery[redis]==5.7.0",
+  "pypdf==7.1.1",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +41,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["assets/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

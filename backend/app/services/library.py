@@ -5,13 +5,14 @@ import copy
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from fastapi import HTTPException
+from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, DomainError, NotFoundError, ValidationFailure
 from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM, SavedSearch, Version, utcnow
-from app.schemas.library import DraftIn, Question, QuizIn, RichTextIn
+from app.schemas.library import DraftIn, LibraryFilters, Question, QuizIn, RichTextIn
 from app.services import audit, versioning
 from app.services.access import can_read, read_condition, require_object
 from app.services.rich_text import plain_text, sanitize_html, search_text
@@ -19,7 +20,17 @@ from app.services.search_index import schedule_index
 from app.services.users import ensure_user
 
 AUTHORED_KINDS = {"rich_text", "quiz", "assessment"}
-METADATA_FIELDS = {"description", "subject", "learning_resource_type", "keywords"}
+METADATA_FIELDS = {
+    "description",
+    "subject",
+    "learning_resource_type",
+    "keywords",
+    "language",
+    "license",
+    "difficulty",
+    "duration_minutes",
+    "learning_standard",
+}
 STATUS_DRAFT = "draft"
 MAX_BULK = 100
 
@@ -55,13 +66,24 @@ def _sync_metadata(session: Session, lo: LearningObject, **fields) -> None:
     record.subject = fields.get("subject") or None
     record.learning_resource_type = fields.get("learning_resource_type") or None
     record.keywords = list(fields.get("keywords") or [])
-    record.lom_json = _lom(
+    document = _lom(
         lo.title,
         record.description,
         record.subject,
         record.learning_resource_type,
         record.keywords,
     )
+    previous = (record.lom_json or {}).get("lom", {})
+    document["lom"] = {
+        **previous,
+        **document["lom"],
+        **{key: fields[key] for key in METADATA_FIELDS if key in fields},
+    }
+    record.lom_json = {**(record.lom_json or {}), **document}
+    if "language" in fields:
+        record.language = fields["language"]
+    if "license" in fields:
+        record.license = fields["license"]
     record.updated_by = fields.get("actor")
 
 
@@ -92,8 +114,16 @@ def _can_manage(actor: Principal, lo: LearningObject) -> bool:
     return actor.is_admin or lo.created_by == actor.subject or actor.can("content.manage")
 
 
-def can_edit_answers(actor: Principal, lo: LearningObject) -> bool:
-    return _can_manage(actor, lo) or actor.can("content.edit")
+def can_edit_answers(actor: Principal, lo: LearningObject, session=None) -> bool:
+    if _can_manage(actor, lo):
+        return True
+    if session is not None:
+        try:
+            require_object(session, lo.id, actor, "edit")
+            return True
+        except (DomainError, HTTPException):
+            return False
+    return False
 
 
 def _new_authored(
@@ -182,12 +212,21 @@ def create_quiz(session: Session, actor: Principal, data: QuizIn) -> LearningObj
 # --- autosave ----------------------------------------------------------------
 
 
-def save_draft(session: Session, actor: Principal, lo_id: str, data: DraftIn) -> LearningObject:
+def save_draft(
+    session: Session, actor: Principal, lo_id: str, data: DraftIn, *, allow_file=False
+) -> LearningObject:
     lo = _lookup(session, lo_id)
     require_object(session, lo_id, actor, "edit")
-    if lo.kind not in AUTHORED_KINDS:
+    if lo.status not in {"draft", "rejected"}:
+        raise ConflictError("Create a new draft before editing reviewed or published content")
+    if lo.kind not in AUTHORED_KINDS and not (allow_file and lo.kind == "file"):
         raise ValidationFailure("only rich text, quizzes and assessments can be autosaved")
-    if data.revision != lo.revision:
+    accepted = session.execute(
+        update(LearningObject)
+        .where(LearningObject.id == lo_id, LearningObject.revision == data.revision)
+        .values(revision=LearningObject.revision + 1)
+    )
+    if accepted.rowcount != 1:
         # Another session saved first. The client must reload rather than overwrite.
         raise ConflictError(f"This item changed elsewhere; current revision is {lo.revision}")
     body = dict(lo.body or {})
@@ -212,18 +251,33 @@ def save_draft(session: Session, actor: Principal, lo_id: str, data: DraftIn) ->
         "learning_resource_type": record.learning_resource_type if record else None,
         "keywords": record.keywords if record else [],
     }
-    for key in ("description", "subject", "learning_resource_type", "keywords"):
+    for key in METADATA_FIELDS:
         value = getattr(data, key)
-        if value is not None:
+        if key in data.model_fields_set:
             current[key] = value
     if data.is_template is not None:
         lo.is_template = data.is_template
     _sync_metadata(session, lo, **current, actor=actor.subject)
     _refresh_search(lo)
-    lo.revision += 1
     versioning.ensure_snapshot(session, lo, actor, "metadata")
     _commit(session, lo)
     return lo
+
+
+def validate_for_submission(lo):
+    if lo.kind == "rich_text" and not plain_text((lo.body or {}).get("html", "")).strip():
+        raise ValidationFailure("Add document content before submitting for review")
+    if lo.kind in {"quiz", "assessment"}:
+        questions = (lo.body or {}).get("questions", [])
+        if not questions:
+            raise ValidationFailure("Add at least one question before submitting for review")
+        for question in questions:
+            try:
+                Question.model_validate(question)
+            except ValueError as exc:
+                raise ValidationFailure(
+                    "Complete every question and its answer options before submitting"
+                ) from exc
 
 
 # --- duplication, archival, deletion, restoration -----------------------------
@@ -289,6 +343,7 @@ def duplicate(session: Session, actor: Principal, lo_id: str) -> LearningObject:
         entity_id=copy_lo.id,
         details={"source": source.id},
     )
+    versioning.ensure_snapshot(session, copy_lo, actor, "create")
     _commit(session, copy_lo)
     return copy_lo
 
@@ -359,9 +414,15 @@ def bulk(session: Session, actor: Principal, action: str, ids: list[str]) -> lis
             else:
                 restore(session, actor, lo_id)
             results.append({"id": lo_id, "ok": True})
-        except DomainError as exc:
+        except (DomainError, HTTPException) as exc:
             session.rollback()
-            results.append({"id": lo_id, "ok": False, "message": exc.message})
+            results.append(
+                {
+                    "id": lo_id,
+                    "ok": False,
+                    "message": exc.message if isinstance(exc, DomainError) else str(exc.detail),
+                }
+            )
     return results
 
 
@@ -371,11 +432,17 @@ def bulk(session: Session, actor: Principal, action: str, ids: list[str]) -> lis
 def preview(session: Session, actor: Principal, lo_id: str) -> dict[str, Any]:
     lo = _lookup(session, lo_id)
     require_object(session, lo_id, actor, "read")
-    base = {"id": lo.id, "title": lo.title, "kind": lo.kind, "revision": lo.revision}
+    base = {
+        "id": lo.id,
+        "title": lo.title,
+        "kind": lo.kind,
+        "revision": lo.revision,
+        "status": lo.status,
+    }
     if lo.kind == "rich_text":
         return {**base, "html": sanitize_html((lo.body or {}).get("html", ""))}
     if lo.kind in {"quiz", "assessment"}:
-        show_answers = can_edit_answers(actor, lo)
+        show_answers = can_edit_answers(actor, lo, session)
         questions = []
         for question in (lo.body or {}).get("questions", []):
             item = {
@@ -419,6 +486,7 @@ def list_library(
     q: str | None,
     page: int,
     page_size: int,
+    filters: LibraryFilters | None = None,
 ) -> tuple[list[LearningObject], int]:
     if state == "deleted":
         # Deleted items are listed only for their owner, admins, or managers.
@@ -441,9 +509,69 @@ def list_library(
                 LearningObject.title.ilike(f"%{term}%")
                 | LearningObject.search_text.like(f"%{term}%")
             )
+    filters = filters or LibraryFilters()
+    query = query.outerjoin(MetadataLOM, MetadataLOM.lo_id == LearningObject.id)
+    for name, column in (
+        ("title", LearningObject.title),
+        ("description", MetadataLOM.description),
+        ("keywords", cast(MetadataLOM.keywords, String)),
+    ):
+        value = getattr(filters, name)
+        if value:
+            query = query.where(column.icontains(value, autoescape=True))
+    for name, column in (
+        ("subject", MetadataLOM.subject),
+        ("language", MetadataLOM.language),
+        ("author", LearningObject.created_by),
+        ("status", LearningObject.status),
+        ("department_id", LearningObject.department_id),
+    ):
+        value = getattr(filters, name)
+        if value is not None:
+            query = query.where(column == value)
+    for name in ("difficulty", "learning_standard"):
+        if getattr(filters, name):
+            query = query.where(
+                MetadataLOM.lom_json["lom"][name].as_string() == getattr(filters, name)
+            )
+    duration = MetadataLOM.lom_json["lom"]["duration_minutes"].as_integer()
+    if filters.duration_min is not None:
+        query = query.where(duration >= filters.duration_min)
+    if filters.duration_max is not None:
+        query = query.where(duration <= filters.duration_max)
+    for field, column, lower in (
+        ("created_from", LearningObject.created_at, True),
+        ("created_to", LearningObject.created_at, False),
+        ("updated_from", LearningObject.updated_at, True),
+        ("updated_to", LearningObject.updated_at, False),
+    ):
+        if getattr(filters, field):
+            query = query.where(
+                column >= getattr(filters, field) if lower else column <= getattr(filters, field)
+            )
+    if filters.version is not None:
+        query = query.where(
+            LearningObject.id.in_(
+                select(Version.lo_id).where(Version.version_number == filters.version)
+            )
+        )
+    if filters.content_type:
+        query = query.where(
+            LearningObject.id.in_(
+                select(Version.lo_id).where(Version.content_type == filters.content_type)
+            )
+        )
     total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    sorting = {
+        "updated_desc": LearningObject.updated_at.desc(),
+        "updated_asc": LearningObject.updated_at.asc(),
+        "created_desc": LearningObject.created_at.desc(),
+        "created_asc": LearningObject.created_at.asc(),
+        "title_asc": LearningObject.title.asc(),
+        "title_desc": LearningObject.title.desc(),
+    }
     rows = session.scalars(
-        query.order_by(LearningObject.updated_at.desc())
+        query.order_by(sorting[filters.sort], LearningObject.id)
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

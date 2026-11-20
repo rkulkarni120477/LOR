@@ -144,7 +144,6 @@ def dispatch(db: Session, sender: MailSender | None, limit: int = 100) -> dict[s
                 row.status = "failed"
             failed += 1
         else:
-
             row.status = "sent"
             row.sent_at = utcnow()
             row.last_error = None

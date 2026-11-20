@@ -21,6 +21,8 @@ import {
 import { apiFetch, postJson, putJson } from "@/lib/api";
 import { LibraryPreview, useItemPreview } from "@/components/LibraryPreview";
 import { AiAssistPanel } from "@/components/AiAssistPanel";
+import DOMPurify from "dompurify";
+import { loadSession } from "@/lib/auth";
 
 type Kind = "rich_text" | "quiz" | "assessment";
 type QuestionDraft = {
@@ -41,6 +43,11 @@ type Form = {
   passingScore: number;
   isTemplate: boolean;
   questions: QuestionDraft[];
+  language: string;
+  license: string;
+  difficulty: string;
+  durationMinutes: string;
+  learningStandard: string;
 };
 type Detail = {
   id: string;
@@ -53,6 +60,11 @@ type Detail = {
   learning_resource_type: string | null;
   keywords: string[];
   body: { html?: string; passing_score?: number; questions?: QuestionDraft[] };
+  language?: string;
+  license?: string;
+  difficulty?: string;
+  duration_minutes?: number;
+  learning_standard?: string;
 };
 const TOOLBAR: [string, string, string?][] = [
   ["B", "bold"],
@@ -90,6 +102,11 @@ function emptyForm(): Form {
     passingScore: 70,
     isTemplate: false,
     questions: [],
+    language: "en",
+    license: "",
+    difficulty: "beginner",
+    durationMinutes: "",
+    learningStandard: "",
   };
 }
 
@@ -111,6 +128,11 @@ function fromDetail(d: Detail): Form {
       points: q.points,
       explanation: q.explanation ?? "",
     })),
+    language: d.language || "en",
+    license: d.license || "",
+    difficulty: d.difficulty || "beginner",
+    durationMinutes: d.duration_minutes?.toString() || "",
+    learningStandard: d.learning_standard || "",
   };
 }
 
@@ -120,8 +142,18 @@ function metadataOf(form: Form) {
     description: form.description,
     subject: form.subject.trim(),
     learning_resource_type: form.resourceType.trim(),
-    keywords: form.keywords.split(",").map((k) => k.trim()).filter(Boolean),
+    keywords: form.keywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean),
     is_template: form.isTemplate,
+    language: form.language.trim() || null,
+    license: form.license.trim() || null,
+    difficulty: form.difficulty || null,
+    duration_minutes: form.durationMinutes
+      ? Number(form.durationMinutes)
+      : null,
+    learning_standard: form.learningStandard || null,
   };
 }
 
@@ -147,7 +179,8 @@ function readBackup(key: string, kind: Kind, server: Form): Form | null {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const stored = JSON.parse(raw) as Form;
-    return JSON.stringify(payloadOf(kind, stored)) === JSON.stringify(payloadOf(kind, server))
+    return JSON.stringify(payloadOf(kind, stored)) ===
+      JSON.stringify(payloadOf(kind, server))
       ? null
       : stored;
   } catch {
@@ -166,7 +199,8 @@ export default function Editor() {
     enabled: !!id,
   });
 
-  if (id && detail.error) return <Alert severity="error">{detail.error.message}</Alert>;
+  if (id && detail.error)
+    return <Alert severity="error">{detail.error.message}</Alert>;
   if (id && !detail.data) return <Typography>Loading…</Typography>;
 
   const kind: Kind = (detail.data?.kind as Kind) ?? newKind;
@@ -194,7 +228,8 @@ function EditorBody({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const storageKey = `lor.library.draft.${id ?? `new-${kind}`}`;
+  const subject = loadSession()?.subject || "anonymous";
+  const storageKey = `lor.library.draft.${subject}.${id ?? `new-${kind}`}`;
 
   const [form, setForm] = useState<Form>(initialForm);
   const [revision, setRevision] = useState(initialRevision);
@@ -205,7 +240,12 @@ function EditorBody({
     readBackup(storageKey, kind, initialForm),
   );
   const [showPreview, setShowPreview] = useState(false);
-  const lastSaved = useRef(JSON.stringify(payloadOf(kind, initialForm)));
+  const [sourceMode, setSourceMode] = useState(false);
+  const currentForm = useRef(form);
+  currentForm.current = form;
+  const lastSaved = useRef(
+    id ? JSON.stringify(payloadOf(kind, initialForm)) : "",
+  );
   const saving = useRef(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const preview = useItemPreview(showPreview ? id : null);
@@ -237,7 +277,15 @@ function EditorBody({
             isRich ? payload : { ...payload, kind },
           );
           lastSaved.current = serialized;
-          window.localStorage.removeItem(`lor.library.draft.new-${kind}`);
+          if (
+            JSON.stringify(payloadOf(kind, currentForm.current)) !== serialized
+          ) {
+            window.localStorage.setItem(
+              `lor.library.draft.${subject}.${created.id}`,
+              JSON.stringify(currentForm.current),
+            );
+          }
+          window.localStorage.removeItem(storageKey);
           void queryClient.invalidateQueries({ queryKey: ["library"] });
           navigate(`/library/${created.id}/edit`, { replace: true });
           return;
@@ -269,6 +317,13 @@ function EditorBody({
     return () => window.clearTimeout(timer);
   }, [form, revision, id, kind, isRich, navigate, queryClient]);
 
+  useEffect(() => {
+    if (!sourceMode && editorRef.current)
+      editorRef.current.innerHTML = DOMPurify.sanitize(
+        currentForm.current.html,
+      );
+  }, [sourceMode]);
+
   // Warn before leaving while a save is pending or has failed.
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -285,7 +340,9 @@ function EditorBody({
   function updateQuestion(index: number, patch: Partial<QuestionDraft>) {
     setForm((current) => ({
       ...current,
-      questions: current.questions.map((q, i) => (i === index ? { ...q, ...patch } : q)),
+      questions: current.questions.map((q, i) =>
+        i === index ? { ...q, ...patch } : q,
+      ),
     }));
   }
 
@@ -318,10 +375,17 @@ function EditorBody({
     }
   }, [status, savedAt, form.title]);
 
-
   return (
     <Stack spacing={2} sx={{ maxWidth: 980 }}>
-      <Stack sx={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }} direction="row">
+      <Stack
+        sx={{
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 1,
+        }}
+        direction="row"
+      >
         <Button component={RouterLink} to="/library">
           ← Back to library
         </Button>
@@ -329,7 +393,11 @@ function EditorBody({
           variant="body2"
           role="status"
           aria-live="polite"
-          color={status === "error" || status === "conflict" ? "error" : "text.secondary"}
+          color={
+            status === "error" || status === "conflict"
+              ? "error"
+              : "text.secondary"
+          }
         >
           {statusText}
         </Typography>
@@ -345,7 +413,8 @@ function EditorBody({
                 size="small"
                 onClick={() => {
                   setForm(restorable);
-                  if (editorRef.current) editorRef.current.innerHTML = restorable.html;
+                  if (editorRef.current)
+                    editorRef.current.innerHTML = restorable.html;
                   setRestorable(null);
                 }}
               >
@@ -372,7 +441,11 @@ function EditorBody({
           severity={status === "conflict" ? "error" : "warning"}
           action={
             status === "conflict" ? (
-              <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => window.location.reload()}
+              >
                 Reload
               </Button>
             ) : undefined
@@ -385,7 +458,8 @@ function EditorBody({
       <Paper sx={{ p: 3 }}>
         <Stack spacing={2}>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            {id ? "Edit" : "New"} {isRich ? "rich text" : kind === "quiz" ? "quiz" : "assessment"}
+            {id ? "Edit" : "New"}{" "}
+            {isRich ? "rich text" : kind === "quiz" ? "quiz" : "assessment"}
           </Typography>
           <TextField
             label="Title"
@@ -403,12 +477,66 @@ function EditorBody({
             slotProps={{ htmlInput: { maxLength: 5000 } }}
           />
           <Stack sx={{ gap: 2 }} direction={{ xs: "column", sm: "row" }}>
-            <TextField label="Subject" value={form.subject} onChange={(e) => update("subject", e.target.value)} fullWidth />
-            <TextField label="Resource type" value={form.resourceType} onChange={(e) => update("resourceType", e.target.value)} fullWidth />
+            <TextField
+              label="Subject"
+              value={form.subject}
+              onChange={(e) => update("subject", e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Resource type"
+              value={form.resourceType}
+              onChange={(e) => update("resourceType", e.target.value)}
+              fullWidth
+            />
           </Stack>
-          <TextField label="Keywords (comma separated)" value={form.keywords} onChange={(e) => update("keywords", e.target.value)} />
+          <TextField
+            label="Keywords (comma separated)"
+            value={form.keywords}
+            onChange={(e) => update("keywords", e.target.value)}
+          />
+          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
+            <TextField
+              label="Language"
+              value={form.language}
+              onChange={(e) => update("language", e.target.value)}
+            />
+            <TextField
+              label="License"
+              value={form.license}
+              onChange={(e) => update("license", e.target.value)}
+            />
+            <TextField
+              label="Duration (minutes)"
+              type="number"
+              value={form.durationMinutes}
+              onChange={(e) => update("durationMinutes", e.target.value)}
+            />
+            <TextField
+              select
+              label="Difficulty"
+              value={form.difficulty}
+              onChange={(e) => update("difficulty", e.target.value)}
+            >
+              {["beginner", "intermediate", "advanced"].map((v) => (
+                <MenuItem key={v} value={v}>
+                  {v}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Learning standard"
+              value={form.learningStandard}
+              onChange={(e) => update("learningStandard", e.target.value)}
+            />
+          </Stack>
           <FormControlLabel
-            control={<Checkbox checked={form.isTemplate} onChange={(e) => update("isTemplate", e.target.checked)} />}
+            control={
+              <Checkbox
+                checked={form.isTemplate}
+                onChange={(e) => update("isTemplate", e.target.checked)}
+              />
+            }
             label="Save as a template (others can duplicate it)"
           />
         </Stack>
@@ -416,31 +544,74 @@ function EditorBody({
 
       {isRich ? (
         <Paper sx={{ p: 3 }}>
-          <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap",  mb: 1 }} role="toolbar" aria-label="Formatting">
-            {TOOLBAR.map(([label, command, value]) => (
-              <Button
-                key={label}
-                size="small"
-                variant="outlined"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyCommand(command, value)}
-              >
-                {label}
-              </Button>
-            ))}
+          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+            <Button
+              aria-pressed={!sourceMode}
+              onClick={() => setSourceMode(false)}
+            >
+              Visual editor
+            </Button>
+            <Button
+              aria-pressed={sourceMode}
+              onClick={() => setSourceMode(true)}
+            >
+              HTML source
+            </Button>
           </Stack>
-          <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
-            role="textbox"
-            aria-label="Content"
-            aria-multiline="true"
-            onInput={(e) => update("html", (e.target as HTMLDivElement).innerHTML)}
-            // Initial markup only. Later edits live in the DOM, so React never resets the caret.
-            dangerouslySetInnerHTML={{ __html: initialForm.html }}
-            style={{ minHeight: 280, padding: 12, border: "1px solid #d6dce8", borderRadius: 8, background: "#fff", outline: "none", lineHeight: 1.6 }}
-          />
+          {sourceMode ? (
+            <TextField
+              label="HTML source"
+              multiline
+              minRows={16}
+              fullWidth
+              value={form.html}
+              onChange={(e) => update("html", e.target.value)}
+              helperText="Unsafe scripts and attributes are removed when saved and previewed."
+            />
+          ) : (
+            <>
+              <Stack
+                direction="row"
+                sx={{ gap: 1, flexWrap: "wrap", mb: 1 }}
+                role="toolbar"
+                aria-label="Formatting"
+              >
+                {TOOLBAR.map(([label, command, value]) => (
+                  <Button
+                    key={label}
+                    size="small"
+                    variant="outlined"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyCommand(command, value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </Stack>
+              <div
+                ref={editorRef}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-label="Content"
+                aria-multiline="true"
+                onInput={(e) =>
+                  update("html", (e.target as HTMLDivElement).innerHTML)
+                }
+                // Initial markup only. Later edits live in the DOM, so React never resets the caret.
+                dangerouslySetInnerHTML={{ __html: initialForm.html }}
+                style={{
+                  minHeight: 280,
+                  padding: 12,
+                  border: "1px solid #d6dce8",
+                  borderRadius: 8,
+                  background: "#fff",
+                  outline: "none",
+                  lineHeight: 1.6,
+                }}
+              />
+            </>
+          )}
         </Paper>
       ) : (
         <Stack spacing={2}>
@@ -448,21 +619,54 @@ function EditorBody({
             label="Passing score (%)"
             type="number"
             value={form.passingScore}
-            onChange={(e) => update("passingScore", Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+            onChange={(e) =>
+              update(
+                "passingScore",
+                Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+              )
+            }
             sx={{ maxWidth: 220 }}
           />
           {form.questions.map((q, index) => (
             <Card key={index} variant="outlined">
               <CardContent>
                 <Stack spacing={2}>
-                  <Stack sx={{ justifyContent: "space-between", alignItems: "center" }} direction="row">
-                    <Typography sx={{ fontWeight: 700 }}>Question {index + 1}</Typography>
-                    <Button color="error" size="small" onClick={() => update("questions", form.questions.filter((_, i) => i !== index))}>
+                  <Stack
+                    sx={{
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                    direction="row"
+                  >
+                    <Typography sx={{ fontWeight: 700 }}>
+                      Question {index + 1}
+                    </Typography>
+                    <Button
+                      color="error"
+                      size="small"
+                      onClick={() =>
+                        update(
+                          "questions",
+                          form.questions.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
                       Remove question
                     </Button>
                   </Stack>
-                  <TextField label="Prompt" value={q.prompt} multiline minRows={2} onChange={(e) => updateQuestion(index, { prompt: e.target.value })} />
-                  <Stack sx={{ gap: 2 }} direction={{ xs: "column", sm: "row" }}>
+                  <TextField
+                    label="Prompt"
+                    value={q.prompt}
+                    multiline
+                    minRows={2}
+                    onChange={(e) =>
+                      updateQuestion(index, { prompt: e.target.value })
+                    }
+                  />
+                  <Stack
+                    sx={{ gap: 2 }}
+                    direction={{ xs: "column", sm: "row" }}
+                  >
                     <TextField
                       select
                       label="Type"
@@ -473,7 +677,12 @@ function EditorBody({
                         updateQuestion(index, {
                           type,
                           correct: 0,
-                          options: type === "true_false" ? ["True", "False"] : q.options.length >= 2 ? q.options : ["", ""],
+                          options:
+                            type === "true_false"
+                              ? ["True", "False"]
+                              : q.options.length >= 2
+                                ? q.options
+                                : ["", ""],
                         });
                       }}
                     >
@@ -485,17 +694,36 @@ function EditorBody({
                       type="number"
                       value={q.points}
                       sx={{ maxWidth: 120 }}
-                      onChange={(e) => updateQuestion(index, { points: Math.min(100, Math.max(1, Number(e.target.value) || 1)) })}
+                      onChange={(e) =>
+                        updateQuestion(index, {
+                          points: Math.min(
+                            100,
+                            Math.max(1, Number(e.target.value) || 1),
+                          ),
+                        })
+                      }
                     />
                   </Stack>
                   <Stack spacing={1}>
-                    <Typography variant="body2" color="text.secondary">Select the correct answer.</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Select the correct answer.
+                    </Typography>
                     {q.options.map((option, optionIndex) => (
-                      <Stack sx={{ alignItems: "center", gap: 1 }} key={optionIndex} direction="row">
+                      <Stack
+                        sx={{ alignItems: "center", gap: 1 }}
+                        key={optionIndex}
+                        direction="row"
+                      >
                         <Radio
                           checked={q.correct === optionIndex}
-                          onChange={() => updateQuestion(index, { correct: optionIndex })}
-                          slotProps={{ input: { "aria-label": `Option ${optionIndex + 1} is correct` } }}
+                          onChange={() =>
+                            updateQuestion(index, { correct: optionIndex })
+                          }
+                          slotProps={{
+                            input: {
+                              "aria-label": `Option ${optionIndex + 1} is correct`,
+                            },
+                          }}
                         />
                         {q.type === "true_false" ? (
                           <Typography>{option}</Typography>
@@ -508,7 +736,9 @@ function EditorBody({
                               placeholder={`Option ${optionIndex + 1}`}
                               onChange={(e) =>
                                 updateQuestion(index, {
-                                  options: q.options.map((o, i) => (i === optionIndex ? e.target.value : o)),
+                                  options: q.options.map((o, i) =>
+                                    i === optionIndex ? e.target.value : o,
+                                  ),
                                 })
                               }
                             />
@@ -517,8 +747,13 @@ function EditorBody({
                               disabled={q.options.length <= 2}
                               onClick={() =>
                                 updateQuestion(index, {
-                                  options: q.options.filter((_, i) => i !== optionIndex),
-                                  correct: Math.min(q.correct, q.options.length - 2),
+                                  options: q.options.filter(
+                                    (_, i) => i !== optionIndex,
+                                  ),
+                                  correct: Math.min(
+                                    q.correct,
+                                    q.options.length - 2,
+                                  ),
                                 })
                               }
                             >
@@ -529,7 +764,13 @@ function EditorBody({
                       </Stack>
                     ))}
                     {q.type === "single_choice" && q.options.length < 10 && (
-                      <Button size="small" sx={{ alignSelf: "flex-start" }} onClick={() => updateQuestion(index, { options: [...q.options, ""] })}>
+                      <Button
+                        size="small"
+                        sx={{ alignSelf: "flex-start" }}
+                        onClick={() =>
+                          updateQuestion(index, { options: [...q.options, ""] })
+                        }
+                      >
                         Add option
                       </Button>
                     )}
@@ -537,7 +778,9 @@ function EditorBody({
                   <TextField
                     label="Explanation shown after answering (optional)"
                     value={q.explanation}
-                    onChange={(e) => updateQuestion(index, { explanation: e.target.value })}
+                    onChange={(e) =>
+                      updateQuestion(index, { explanation: e.target.value })
+                    }
                   />
                 </Stack>
               </CardContent>
@@ -546,7 +789,12 @@ function EditorBody({
           <Button
             variant="outlined"
             disabled={form.questions.length >= 200}
-            onClick={() => update("questions", [...form.questions, { ...NEW_QUESTION, options: ["", ""] }])}
+            onClick={() =>
+              update("questions", [
+                ...form.questions,
+                { ...NEW_QUESTION, options: ["", ""] },
+              ])
+            }
           >
             Add question
           </Button>
@@ -555,9 +803,16 @@ function EditorBody({
 
       {id && <AiAssistPanel loId={id} />}
       <Paper sx={{ p: 2 }}>
-        <Stack sx={{ justifyContent: "space-between", alignItems: "center" }} direction="row">
+        <Stack
+          sx={{ justifyContent: "space-between", alignItems: "center" }}
+          direction="row"
+        >
           <Typography sx={{ fontWeight: 600 }}>Preview</Typography>
-          <Button size="small" disabled={!id} onClick={() => setShowPreview((v) => !v)}>
+          <Button
+            size="small"
+            disabled={!id}
+            onClick={() => setShowPreview((v) => !v)}
+          >
             {showPreview ? "Hide preview" : "Show preview"}
           </Button>
         </Stack>
@@ -572,7 +827,9 @@ function EditorBody({
               Shows the last saved version.
             </Typography>
             {preview.isLoading && <Typography>Loading preview…</Typography>}
-            {preview.error && <Alert severity="error">{preview.error.message}</Alert>}
+            {preview.error && (
+              <Alert severity="error">{preview.error.message}</Alert>
+            )}
             {preview.data && <LibraryPreview item={preview.data} />}
           </Stack>
         )}

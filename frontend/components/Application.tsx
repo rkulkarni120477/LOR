@@ -24,6 +24,8 @@ import SchemaPage from "@/views/Schema";
 import IntegrationsPage from "@/views/Integrations";
 import TaxonomyPage from "@/views/Taxonomy";
 import Editor from "@/views/Editor";
+import Create from "@/views/Create";
+import FileEditor from "@/views/FileEditor";
 
 const theme = createTheme({
   palette: { primary: { main: "#1762c4" }, background: { default: "#f5f7fb" } },
@@ -64,6 +66,7 @@ function QuerySession() {
           <Route path="/search" element={<Search />} />
           <Route path="/login" element={<Login />} />
           <Route path="/contribute" element={<Contribute />} />
+          <Route path="/create" element={<Create />} />
           <Route path="/review" element={<Review />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/objects" element={<ObjectDetail />} />
@@ -77,6 +80,7 @@ function QuerySession() {
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/library/new/:kind" element={<Editor />} />
           <Route path="/library/:id/edit" element={<Editor />} />
+          <Route path="/library/:id/file" element={<FileEditor />} />
           <Route
             path="*"
             element={

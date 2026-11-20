@@ -35,6 +35,11 @@ class Metadata(BaseModel):
     subject: str | None = Field(default=None, max_length=255)
     learning_resource_type: str | None = Field(default=None, max_length=100)
     keywords: list[str] = Field(default_factory=list, max_length=30)
+    language: str | None = Field(default=None, max_length=16)
+    license: str | None = Field(default=None, max_length=255)
+    difficulty: Literal["beginner", "intermediate", "advanced"] | None = None
+    duration_minutes: int | None = Field(default=None, ge=0, le=100000)
+    learning_standard: str | None = Field(default=None, max_length=100)
 
     @field_validator("keywords")
     @classmethod
@@ -47,6 +52,13 @@ class RichTextIn(Metadata):
     html: str = Field(default="", max_length=200_000)
     is_template: bool = False
 
+    @field_validator("title")
+    @classmethod
+    def title_not_blank(cls, value):
+        if not value.strip():
+            raise ValueError("Title cannot be blank")
+        return value.strip()
+
 
 class QuizIn(Metadata):
     title: str = Field(min_length=1, max_length=500)
@@ -54,6 +66,22 @@ class QuizIn(Metadata):
     passing_score: int = Field(default=70, ge=0, le=100)
     questions: list[Question] = Field(default_factory=list, max_length=200)
     is_template: bool = False
+
+    @field_validator("title")
+    @classmethod
+    def title_not_blank(cls, value):
+        if not value.strip():
+            raise ValueError("Title cannot be blank")
+        return value.strip()
+
+
+class DraftQuestion(Question):
+    prompt: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def check_options(self):
+        # In-progress questions are saved as drafts; submission performs strict validation.
+        return self
 
 
 class DraftIn(BaseModel):
@@ -67,8 +95,13 @@ class DraftIn(BaseModel):
     keywords: list[str] | None = Field(default=None, max_length=30)
     html: str | None = Field(default=None, max_length=200_000)
     passing_score: int | None = Field(default=None, ge=0, le=100)
-    questions: list[Question] | None = Field(default=None, max_length=200)
+    questions: list[DraftQuestion] | None = Field(default=None, max_length=200)
     is_template: bool | None = None
+    language: str | None = Field(default=None, max_length=16)
+    license: str | None = Field(default=None, max_length=255)
+    difficulty: Literal["beginner", "intermediate", "advanced"] | None = None
+    duration_minutes: int | None = Field(default=None, ge=0, le=100000)
+    learning_standard: str | None = Field(default=None, max_length=100)
 
 
 class BulkIn(BaseModel):
@@ -97,9 +130,38 @@ class SavedSearchIn(BaseModel):
     @field_validator("params")
     @classmethod
     def bounded(cls, value):
-        if len(value) > 10:
+        if len(value) > 30:
             raise ValueError("too many search parameters")
         for key, item in value.items():
             if len(key) > 40 or (isinstance(item, str) and len(item) > 500):
                 raise ValueError("search parameter is too long")
         return value
+
+
+class LibraryFilters(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=500)
+    keywords: str | None = Field(default=None, max_length=500)
+    subject: str | None = Field(default=None, max_length=255)
+    language: str | None = Field(default=None, max_length=16)
+    author: str | None = Field(default=None, max_length=255)
+    status: str | None = Field(default=None, max_length=32)
+    department_id: int | None = Field(default=None, ge=1)
+    difficulty: str | None = Field(default=None, max_length=32)
+    learning_standard: str | None = Field(default=None, max_length=100)
+    content_type: str | None = Field(default=None, max_length=128)
+    version: int | None = Field(default=None, ge=1)
+    duration_min: int | None = Field(default=None, ge=0)
+    duration_max: int | None = Field(default=None, ge=0)
+    created_from: datetime | None = None
+    created_to: datetime | None = None
+    updated_from: datetime | None = None
+    updated_to: datetime | None = None
+    sort: Literal[
+        "updated_desc", "updated_asc", "created_desc", "created_asc", "title_asc", "title_desc"
+    ] = "updated_desc"
+
+
+class AttemptIn(BaseModel):
+    revision: int = Field(ge=1)
+    answers: list[int] = Field(max_length=200)
