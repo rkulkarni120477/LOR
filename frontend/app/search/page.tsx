@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 import { apiFetch, ApiError } from "@/lib/api";
 
@@ -22,8 +24,17 @@ type SearchResponse = {
 };
 
 export default function SearchPage() {
-  const [q, setQ] = useState("");
-  const [subject, setSubject] = useState("");
+  return (
+    <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading search...</p>}>
+      <SearchContent />
+    </Suspense>
+  );
+}
+
+function SearchContent() {
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
+  const [subject, setSubject] = useState(() => searchParams.get("subject") ?? "");
   const [format, setFormat] = useState("");
   const [data, setData] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +101,7 @@ export default function SearchPage() {
         <ul className="space-y-3">
           {data?.items.map((hit) => (
             <li key={hit.id} className="rounded border border-[var(--border)] p-4">
-              <h2 className="font-medium">{hit.title}</h2>
+              <h2 className="font-medium"><Link className="text-blue-700 underline" href={`/objects?id=${encodeURIComponent(hit.id)}`}>{hit.title}</Link></h2>
               {hit.description && (
                 <p className="mt-1 text-sm text-[var(--muted)]">{hit.description}</p>
               )}

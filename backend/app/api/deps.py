@@ -12,7 +12,7 @@ from app.storage.s3 import S3Storage
 def _default_storage() -> StorageBackend:
     settings = get_settings()
     if settings.storage_backend == "s3":
-        return S3Storage()  # stub: raises NotImplementedError on use
+        return S3Storage(settings.s3_bucket, region=settings.aws_region)
     return LocalStorage(settings.local_storage_path)
 
 

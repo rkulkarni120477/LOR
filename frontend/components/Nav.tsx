@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
+import { Icon, type IconName } from "@/components/Icon";
 import {
   clearToken,
   hasAnyRole,
@@ -12,19 +13,35 @@ import {
   subscribeToSession,
 } from "@/lib/auth";
 
-// Role-aware navigation. This only hides links for convenience; the backend enforces every route.
-const LINKS: { href: string; label: string; roles: string[] }[] = [
-  { href: "/search", label: "Search", roles: ["Learner", "Contributor", "Reviewer"] },
-  { href: "/contribute", label: "Contribute", roles: ["Contributor"] },
-  { href: "/review", label: "Review", roles: ["Reviewer"] },
-  { href: "/reports", label: "Reports", roles: ["Admin"] },
+const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[] = [
+  { href: "/", label: "Home", icon: "home" },
+  {
+    href: "/search",
+    label: "Content Library",
+    icon: "library",
+    roles: ["Learner", "Contributor", "Reviewer"],
+  },
+  { href: "/contribute", label: "Create", icon: "plus", roles: ["Contributor"] },
+  { href: "/contribute", label: "Upload", icon: "upload", roles: ["Contributor"] },
+  { href: "/review", label: "Workflows", icon: "workflow", roles: ["Reviewer"] },
+  { href: "/collections", label: "Collections", icon: "folder", roles: ["Learner", "Contributor", "Reviewer"] },
+  { href: "/versioning", label: "Versioning", icon: "clock", roles: ["Contributor", "Reviewer"] },
+  { href: "/favorites", label: "Favorites", icon: "book", roles: ["Learner", "Contributor", "Reviewer"] },
+  { href: "/reports", label: "Reports & Analytics", icon: "chart", roles: ["Admin"] },
 ];
 
-export function Nav() {
+export function Nav({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const token = useSyncExternalStore(subscribeToSession, readStoredToken, () => null);
   const session = useMemo(() => (token ? sessionFromToken(token) : null), [token]);
+  const displayName = session?.email?.split("@")[0] ?? session?.subject ?? "Guest";
+  const initials = displayName
+    .split(/[ ._-]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 
   function signOut() {
     clearToken();
@@ -32,47 +49,78 @@ export function Nav() {
   }
 
   return (
-    <header className="border-b border-[var(--border)] bg-[var(--background)]">
-      <nav
-        aria-label="Main"
-        className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3 sm:px-6"
-      >
-        <Link href="/search" className="font-semibold text-[var(--accent)]">
-          LOR
+    <>
+      <header className="app-header">
+        <Link href="/" className="brand-lockup" aria-label="ELOR home">
+          <span className="brand-symbol">
+            <Icon name="layers" size={29} />
+          </span>
+          <span className="brand-name">ELOR</span>
         </Link>
-        <ul className="flex flex-wrap gap-3 text-sm">
-          {LINKS.filter((link) => hasAnyRole(session, link.roles)).map((link) => (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className={
-                  pathname.startsWith(link.href)
-                    ? "font-medium text-[var(--accent)]"
-                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
-                }
-              >
-                {link.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-        <div className="ml-auto text-sm">
+        <span className="header-divider" aria-hidden="true" />
+        <span className="header-title">Enterprise Learning Object Repository</span>
+        <div className="header-actions">
+          <Link className="header-icon" href="/search" aria-label="Open content library">
+            <Icon name="search" size={22} />
+          </Link>
+          {session && hasAnyRole(session, ["Reviewer"]) && (
+            <Link className="header-icon" href="/review" aria-label="Review queue">
+              <Icon name="bell" size={22} />
+            </Link>
+          )}
+          <span className="profile-avatar" aria-hidden="true">
+            {initials || "G"}
+          </span>
+          <div className="profile-copy">
+            <span className="profile-name">{displayName}</span>
+            <span className="profile-role">{session?.roles[0] ?? "Guest"}</span>
+          </div>
           {session ? (
-            <span className="flex items-center gap-3">
-              <span className="text-[var(--muted)]">
-                {session.email ?? session.subject} · {session.roles.join(", ") || "no roles"}
-              </span>
-              <button onClick={signOut} className="underline">
-                Sign out
-              </button>
-            </span>
+            <button type="button" className="profile-action" onClick={signOut}>
+              Sign out
+            </button>
           ) : (
-            <Link href="/login" className="underline">
+            <Link href="/login" className="profile-action">
               Sign in
             </Link>
           )}
         </div>
-      </nav>
-    </header>
+      </header>
+      <div className="app-shell">
+        <aside className="app-sidebar">
+          <nav aria-label="Main navigation">
+            {LINKS.filter((link) => !link.roles || hasAnyRole(session, link.roles)).map(
+              (link, index) => {
+                const active =
+                  link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                return (
+                  <Link
+                    key={`${link.href}-${link.label}`}
+                    href={link.href}
+                    className={`sidebar-link${active ? " active" : ""}${index === 0 ? " home-link" : ""}`}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Icon name={link.icon} size={19} />
+                    <span>{link.label}</span>
+                  </Link>
+                );
+              },
+            )}
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="storage-card">
+              <span className="storage-icon">
+                <Icon name="layers" size={21} />
+              </span>
+              <div>
+                <strong>Learning library</strong>
+                <span>Shared content workspace</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <main className="app-main">{children}</main>
+      </div>
+    </>
   );
 }

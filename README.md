@@ -6,6 +6,11 @@ SQLite storage that can move to PostgreSQL. This is a first runnable version. Se
 
 ## Quick start (local, no AWS needed)
 
+The current extension adds collections, personal favorites, file version restoration,
+authorized downloads, and persisted dashboard metrics. The full enterprise scope and
+remaining work are tracked in [the implementation plan](docs/implementation-plan.md).
+This checkout remains an incremental development application, not a production release.
+
 Prerequisites: Python 3.12, Node 24, and Docker (optional, for compose).
 
 ```powershell
@@ -18,6 +23,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m alembic upgrade head     # creates lor.db
 .\.venv\Scripts\python.exe scripts\seed.py             # roles + sample taxonomy
+.\.venv\Scripts\python.exe scripts\seed_demo.py        # optional, development only: five courses
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 # Health check: http://localhost:8000/health
 
@@ -102,13 +108,21 @@ docs/      architecture.md (Mermaid diagram, request flows, legend)
 | Role-aware navigation | Implemented | UX only; backend enforces |
 | Next.js proxy with Authorization forwarding | Implemented | Forwards only `/api/health` and `/api/v1/*` |
 | Docker images and compose | Implemented | Not run in CI here; see verification notes |
-| S3 storage adapter | **Stub** | Raises `NotImplementedError` |
+| S3 storage adapter | Implemented, offline contract tested | Set `STORAGE_BACKEND=s3` and `S3_BUCKET`; real AWS not exercised |
 | LMS, HR sync, vendor integrations | **Stub** | Documented TODOs |
 | Enterprise SSO sign-in (OIDC auth-code + PKCE) | **Requires SSO config** | Paste-a-token sign-in for now |
 | AWS deployment (ECS / App Runner) | **Requires AWS config** | Documentation in `infra/aws/README.md` |
 | PostgreSQL | **Not yet** | URL is swappable; see the AWS notes |
 
 ## Known limitations
+
+- Collections, Favorites, and Versioning have dedicated integrated pages; library and
+  recent-object titles open the object detail page for downloads and metadata editing.
+- Apply `alembic upgrade head` before running the extended app. The new migration adds
+  collections, memberships, favorites, and download events without replacing existing data.
+- File restoration retains current metadata and returns the object to draft; the published
+  file record is preserved. Full immutable metadata snapshots remain future work.
+- Dashboard bytes count distinct storage keys. Downloads are delivery events, not completions.
 
 - SQLite allows one writer. Run a single backend instance, or move to PostgreSQL first.
 - Ask answers are generated in one call, then chunked into SSE events.

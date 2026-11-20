@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import agents, content, metadata, reports, search, workflow, xapi
+from app.api.v1 import agents, content, metadata, reports, repository, search, workflow, xapi
 
 api_router = APIRouter()
-for module in (content, metadata, search, workflow, reports, agents, xapi):
+for module in (content, metadata, search, workflow, reports, repository, agents, xapi):
     api_router.include_router(module.router)

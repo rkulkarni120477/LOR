@@ -176,3 +176,49 @@ class XapiStatement(Base):
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     statement: Mapped[dict[str, Any]] = mapped_column(JSON)
     stored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Collection(Base):
+    __tablename__ = "collections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner_subject: Mapped[str] = mapped_column(String(255), index=True)
+    visibility: Mapped[str] = mapped_column(String(16), default="private")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CollectionItem(Base):
+    __tablename__ = "collection_items"
+
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True
+    )
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+
+    owner_subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), primary_key=True
+    )
+    folder: Mapped[str] = mapped_column(String(255), default="AI in Education")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Download(Base):
+    __tablename__ = "downloads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    actor_subject: Mapped[str] = mapped_column(String(255), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

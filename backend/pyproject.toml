@@ -39,6 +39,7 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
 markers = ["aws: needs real AWS Bedrock credentials; run with -m aws"]
 # AWS tests are excluded by default so `make test` runs offline.
 addopts = "-m 'not aws'"

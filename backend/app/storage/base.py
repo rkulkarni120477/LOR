@@ -1,4 +1,4 @@
-"""Storage interface. Implementations: LocalStorage (dev), S3Storage (stub)."""
+"""Storage interface. Implementations: LocalStorage (dev), private S3Storage."""
 
 from abc import ABC, abstractmethod
 from typing import BinaryIO

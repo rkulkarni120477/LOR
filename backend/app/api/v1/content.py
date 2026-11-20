@@ -1,17 +1,22 @@
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_storage
 from app.core.config import Settings, get_settings
 from app.core.errors import NotFoundError
 from app.core.security import Principal, Role, get_principal, require_roles
+from app.db.models import Download, LearningObject, Version, WorkflowState
 from app.db.session import get_db
 from app.schemas.common import Page
 from app.schemas.content import ContentDetail, ContentOut, VersionOut
 from app.schemas.lom import LOMMetadata
+from app.services import audit
 from app.services import content as content_service
 from app.services import preview as preview_service
 from app.services.users import ensure_user
@@ -130,4 +135,113 @@ def get_content(
     principal: Principal = Depends(get_principal),
 ) -> ContentDetail:
     lo = content_service.get_learning_object(db, lo_id, principal)
+    return _detail(lo)
+
+
+@router.get("/{lo_id}/download")
+def download_content(
+    lo_id: str,
+    version: int | None = Query(None, ge=1),
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+    principal: Principal = Depends(get_principal),
+) -> Response:
+    lo = content_service.get_learning_object(db, lo_id, principal)
+    # Historical drafts are available only to repository staff.
+    if version is not None and not principal.has_any({Role.CONTRIBUTOR, Role.REVIEWER}):
+        raise HTTPException(403, "Historical downloads require a repository role")
+    selected = (
+        next((v for v in lo.versions if v.version_number == version), None)
+        if (version is not None)
+        else (lo.versions[-1] if lo.versions else None)
+    )
+    if selected is None:
+        raise NotFoundError("version not found")
+    try:
+        with storage.open(selected.storage_key) as stream:
+            data = stream.read()
+    except FileNotFoundError as exc:
+        raise NotFoundError("content file not found") from exc
+    db.add(
+        Download(
+            lo_id=lo_id, version_number=selected.version_number, actor_subject=principal.subject
+        )
+    )
+    audit.record(
+        db,
+        actor_subject=principal.subject,
+        action="content.download",
+        entity_type="learning_object",
+        entity_id=lo_id,
+        details={"version": selected.version_number},
+    )
+    db.commit()
+    return Response(
+        data,
+        media_type=selected.content_type,
+        headers={
+            "Content-Disposition": "attachment; filename*=UTF-8''"
+            + quote(selected.original_filename),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "sandbox",
+        },
+    )
+
+
+@router.post(
+    "/{lo_id}/versions/{version_number}/restore", response_model=ContentDetail, status_code=201
+)
+def restore_version(
+    lo_id: str,
+    version_number: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+) -> ContentDetail:
+    # Serialize writers on PostgreSQL. The unique version constraint protects SQLite races.
+    db.scalar(select(LearningObject).where(LearningObject.id == lo_id).with_for_update())
+    lo = content_service.get_learning_object(db, lo_id, principal)
+    if lo.created_by != principal.subject and Role.ADMIN.value not in principal.roles:
+        raise HTTPException(403, "Only the author or an administrator can restore versions")
+    if lo.status in {"submitted", "approved"}:
+        raise HTTPException(409, "Finish or withdraw the active review before restoring")
+    source = next((v for v in lo.versions if v.version_number == version_number), None)
+    if source is None:
+        raise NotFoundError("version not found")
+    new_number = max(v.version_number for v in lo.versions) + 1
+    previous_status = lo.status
+    lo.versions.append(
+        Version(
+            version_number=new_number,
+            storage_key=source.storage_key,
+            original_filename=source.original_filename,
+            content_type=source.content_type,
+            size_bytes=source.size_bytes,
+            sha256=source.sha256,
+            created_by=principal.subject,
+        )
+    )
+    lo.status = "draft"
+    db.add(
+        WorkflowState(
+            lo_id=lo_id,
+            from_state=previous_status,
+            to_state="draft",
+            actor_subject=principal.subject,
+            comment=f"Restored file version {version_number} as {new_number}",
+        )
+    )
+    audit.record(
+        db,
+        actor_subject=principal.subject,
+        action="version.restore",
+        entity_type="learning_object",
+        entity_id=lo_id,
+        details={"source": version_number, "new_version": new_number},
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Version changed concurrently; reload and retry") from exc
     return _detail(lo)

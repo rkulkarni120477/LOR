@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     bedrock_guardrail_version: str = "DRAFT"
 
     # Storage.
-    storage_backend: str = "local"  # "local" | "s3" (s3 is a stub)
+    storage_backend: str = "local"  # "local" | "s3"
+    s3_bucket: str = ""
     local_storage_path: str = "./data/storage"
     max_upload_bytes: int = 200 * 1024 * 1024
 
