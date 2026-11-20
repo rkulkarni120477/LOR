@@ -1,5 +1,5 @@
-import { RepositoryWorkspace } from "@/components/RepositoryWorkspace";
+import { FavoritesView } from "@/components/FavoritesView";
 
 export default function FavoritesPage() {
-  return <RepositoryWorkspace mode="favorites" />;
+  return <FavoritesView />;
 }

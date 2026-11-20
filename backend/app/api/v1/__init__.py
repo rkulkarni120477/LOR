@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     agents,
     auth,
+    collections,
     content,
     identity,
     library,
@@ -28,6 +29,7 @@ for module in (
     uploads,
     workflow,
     reports,
+    collections,
     repository,
     agents,
     xapi,

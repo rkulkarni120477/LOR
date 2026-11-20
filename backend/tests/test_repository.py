@@ -31,7 +31,7 @@ def test_collection_ownership_order_and_cascade(client, token_factory, seeded_lo
     assert client.get(path, headers=owner).json()["items"][0]["id"] == seeded_lo
     assert (
         client.put(
-            path, json={"name": "Onboarding", "visibility": "public"}, headers=owner
+            path, json={"name": "Onboarding", "visibility": "published"}, headers=owner
         ).status_code
         == 200
     )

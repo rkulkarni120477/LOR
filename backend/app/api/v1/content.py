@@ -17,6 +17,7 @@ from app.schemas.common import Page
 from app.schemas.content import ContentDetail, ContentOut, VersionOut
 from app.schemas.lom import LOMMetadata
 from app.services import audit
+from app.services import collections as collection_service
 from app.services import content as content_service
 from app.services import preview as preview_service
 from app.services.access import require_object
@@ -169,6 +170,8 @@ def get_content(
     principal: Principal = Depends(get_principal),
 ) -> ContentDetail:
     lo = content_service.get_learning_object(db, lo_id, principal)
+    collection_service.touch(db, principal, "object", lo_id)
+    db.commit()
     return _detail(lo)
 
 

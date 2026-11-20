@@ -214,13 +214,81 @@ class XapiStatement(Base):
 
 
 class Collection(Base):
+    """Collections nest through parent_id. Shares and publication apply to the whole subtree."""
+
     __tablename__ = "collections"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     owner_subject: Mapped[str] = mapped_column(String(255), index=True)
+    # "private" | "published". Published collections are readable by every repository user.
     visibility: Mapped[str] = mapped_column(String(16), default="private")
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CollectionShare(Base):
+    __tablename__ = "collection_shares"
+
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True
+    )
+    grantee_type: Mapped[str] = mapped_column(String(16), primary_key=True)  # user|group|department
+    grantee_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    permission: Mapped[str] = mapped_column(String(8))  # view|edit
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CollectionView(Base):
+    """One row per view of a collection. Feeds analytics."""
+
+    __tablename__ = "collection_views"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), index=True
+    )
+    viewer_subject: Mapped[str] = mapped_column(String(255), index=True)
+    viewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class RecentAccess(Base):
+    """Latest access per user and target. Kind is "collection" or "object"."""
+
+    __tablename__ = "recent_access"
+
+    owner_subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    target_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class FavoriteCollection(Base):
+    __tablename__ = "favorite_collections"
+
+    owner_subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class FavoriteFolder(Base):
+    """Explicit folders, so an empty folder can exist. Favorite folders also exist implicitly."""
+
+    __tablename__ = "favorite_folders"
+
+    owner_subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
