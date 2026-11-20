@@ -42,6 +42,7 @@ ROLE_PERMISSIONS = {
         "reports.read",
         "workflow.assign",
         "workflow.policy",
+        "metadata.manage",
     },
     Role.SUPER_ADMIN.value: {"*"},
 }

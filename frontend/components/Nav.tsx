@@ -32,6 +32,8 @@ const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[]
   { href: "/versioning", label: "Versioning", icon: "clock", roles: ["Contributor", "Reviewer"] },
   { href: "/favorites", label: "Favorites", icon: "book", roles: ["Learner", "Contributor", "Reviewer"] },
   { href: "/reports", label: "Reports & Analytics", icon: "chart", roles: ["Admin"] },
+  { href: "/schema", label: "Metadata Schema", icon: "tag", roles: ["Admin"] },
+  { href: "/taxonomy", label: "Taxonomy", icon: "tag", roles: ["Admin"] },
 ];
 
 export function Nav({ children }: { children: ReactNode }) {

@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationFailure
 from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM
 from app.schemas.lom import LOMMetadata
-from app.services import audit
+from app.services import audit, taxonomy
 from app.services.access import require_object
 from app.services.search_index import schedule_index
 
@@ -32,6 +32,9 @@ def update_metadata(
         session.add(meta)
 
     data = payload.model_dump()
+    problems = taxonomy.validate_metadata(session, data)
+    if problems:
+        raise ValidationFailure("; ".join(problems[:5]))
     meta.title = data["title"]
     meta.description = data["description"]
     meta.language = data["language"]

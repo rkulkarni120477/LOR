@@ -1,5 +1,7 @@
 """IEEE LOM-aligned metadata schemas (subset of the standard used by this repository)."""
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -19,6 +21,15 @@ class LOMMetadata(BaseModel):
     duration: str | None = Field(default=None, max_length=64, description="ISO 8601 duration")
     alt_text_provided: bool | None = None
     captions_provided: bool | None = None
+    # Values for the custom fields defined under Schema. Checked against those definitions on save.
+    custom: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("custom")
+    @classmethod
+    def _bounded_custom(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(value) > 50:
+            raise ValueError("at most 50 custom values")
+        return value
 
     @field_validator("keywords")
     @classmethod

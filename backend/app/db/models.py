@@ -166,6 +166,11 @@ class TaxonomyTerm(Base):
     code: Mapped[str] = mapped_column(String(64))
     label: Mapped[str] = mapped_column(String(255))
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("taxonomy_terms.id"))
+    # active | deprecated (kept for existing items, not offered) | merged (points at merged_into_id)
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
+    merged_into_id: Mapped[int | None] = mapped_column(
+        ForeignKey("taxonomy_terms.id"), nullable=True
+    )
 
 
 class WorkflowState(Base):
@@ -550,4 +555,36 @@ class EmailOutbox(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Vocabulary(Base):
+    """A controlled vocabulary. Terms belong to it through TaxonomyTerm.scheme == name.
+    When locked, values for the LOM fields of the same name must be active terms."""
+
+    __tablename__ = "vocabularies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MetadataField(Base):
+    """A custom metadata field, validated on every metadata save."""
+
+    __tablename__ = "metadata_fields"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(120))
+    # text | number | date | boolean | select
+    field_type: Mapped[str] = mapped_column(String(16))
+    # For select fields: either an explicit option list or the name of a vocabulary.
+    options: Mapped[list[str]] = mapped_column(JSON, default=list)
+    vocabulary: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    help_text: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
