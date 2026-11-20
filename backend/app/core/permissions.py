@@ -40,6 +40,8 @@ ROLE_PERMISSIONS = {
         "collections.write",
         "organization.manage",
         "reports.read",
+        "workflow.assign",
+        "workflow.policy",
     },
     Role.SUPER_ADMIN.value: {"*"},
 }

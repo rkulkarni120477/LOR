@@ -443,3 +443,111 @@ class UploadPart(Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class ApprovalPolicy(Base):
+    """A named sequence of approval stages. A case snapshots its policy when it is submitted."""
+
+    __tablename__ = "approval_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PolicyStage(Base):
+    __tablename__ = "policy_stages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    policy_id: Mapped[int] = mapped_column(
+        ForeignKey("approval_policies.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(120))
+    # The permission a decider needs for this stage, e.g. workflow.approve.
+    permission: Mapped[str] = mapped_column(String(64))
+    # Parallel approval: this many distinct approvals move the stage on.
+    approvals_required: Mapped[int] = mapped_column(Integer, default=1)
+    # Named deciders. Empty means any holder of the permission may decide.
+    assignees: Mapped[list[str]] = mapped_column(JSON, default=list)
+    sla_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    escalation_role: Mapped[str] = mapped_column(
+        String(64), default="Repository Administrator"
+    )
+
+
+class ReviewCase(Base):
+    """One submission round for a learning object. Changes and resubmissions open a new round."""
+
+    __tablename__ = "review_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), index=True
+    )
+    round: Mapped[int] = mapped_column(Integer, default=1)
+    # open | under_review | approved | changes_requested | rejected | withdrawn | superseded
+    status: Mapped[str] = mapped_column(String(24), default="open", index=True)
+    policy_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    policy_name: Mapped[str] = mapped_column(String(120), default="Default")
+    # Frozen copy of the stages at submission, so later policy edits do not move running cases.
+    stages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    stage_position: Mapped[int] = mapped_column(Integer, default=1)
+    submitted_by: Mapped[str] = mapped_column(String(255), index=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StageTask(Base):
+    __tablename__ = "stage_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("review_cases.id", ondelete="CASCADE"), index=True
+    )
+    stage_position: Mapped[int] = mapped_column(Integer)
+    permission: Mapped[str] = mapped_column(String(64))
+    # None means a pool task: any holder of the permission may decide it.
+    assignee_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # open | approved | rejected | changes_requested | cancelled
+    state: Mapped[str] = mapped_column(String(24), default="open", index=True)
+    decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Notification(Base):
+    """In-app notification. Email for the same event is queued in email_outbox."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recipient_subject: Mapped[str] = mapped_column(String(255), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text, default="")
+    lo_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EmailOutbox(Base):
+    __tablename__ = "email_outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recipient_email: Mapped[str] = mapped_column(String(255))
+    subject: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text)
+    # pending | sent | failed
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+

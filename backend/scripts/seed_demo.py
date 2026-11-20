@@ -60,6 +60,8 @@ def main():
         raise SystemExit("Demo seeding requires ENV=development")
     actor = Principal(subject="dev-contributor", roles=frozenset({"Contributor"}))
     reviewer = Principal(subject="dev-reviewer", roles=frozenset({"Reviewer", "Approver", "Publisher"}))
+    # Separation of duties: the approver and the publisher are different people.
+    publisher = Principal(subject="dev-publisher", roles=frozenset({"Publisher"}))
     with get_session_factory()() as session:
         for title, subject, description, target in COURSES:
             if session.scalar(
@@ -106,7 +108,7 @@ def main():
                 workflow.submit(session, lo.id, actor, "Demo content ready for review")
             if target == "published":
                 workflow.decide(session, lo.id, reviewer, "approve", "Demo reviewed")
-                workflow.publish(session, lo.id, reviewer)
+                workflow.publish(session, lo.id, publisher)
     print("Demo courses ready: 3 published, 1 submitted, 1 draft (existing samples retained).")
 
 

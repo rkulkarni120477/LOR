@@ -14,6 +14,7 @@ import {
   can,
 } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import { NotificationsMenu } from "@/components/NotificationsMenu";
 
 const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[] = [
   { href: "/", label: "Home", icon: "home" },
@@ -66,11 +67,7 @@ export function Nav({ children }: { children: ReactNode }) {
           <Link className="header-icon" href="/search" aria-label="Open content library">
             <Icon name="search" size={22} />
           </Link>
-          {session && hasAnyRole(session, ["Reviewer"]) && (
-            <Link className="header-icon" href="/review" aria-label="Review queue">
-              <Icon name="bell" size={22} />
-            </Link>
-          )}
+          {session && <NotificationsMenu />}
           <span className="profile-avatar" aria-hidden="true">
             {initials || "G"}
           </span>

@@ -63,7 +63,7 @@ def test_upload_submit_approve_publish_happy_path(client, token_factory):
 
     published = client.post(
         f"/api/v1/workflow/{lo_id}/publish",
-        headers=_headers(token_factory, ["Approver", "Publisher", "Reviewer"], "reviewer-1"),
+        headers=_headers(token_factory, ["Publisher"], "publisher-1"),
     )
     assert published.json()["status"] == "published"
 

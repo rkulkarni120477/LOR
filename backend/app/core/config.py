@@ -101,6 +101,15 @@ class Settings(BaseSettings):
     max_compression_ratio: int = 100
     allow_generic_zip: bool = True
 
+    # Email notifications. Left empty, mail stays queued in the outbox until SMTP is configured.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from: str = "elor-notifications@localhost"
+    smtp_starttls: bool = True
+    app_name: str = "ELOR"
+
     # Agent / vector stores (separate SQLite files so Alembic never sees vec0 tables).
     checkpoint_db_path: str = "./checkpoints.db"
     vector_db_path: str = "./vectors.db"
