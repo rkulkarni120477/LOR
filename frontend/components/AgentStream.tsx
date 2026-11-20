@@ -36,7 +36,7 @@ export function AgentStream({ endpoint, buildBody, placeholder, submitLabel = "A
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
-          ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
+          ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
         },
         body: JSON.stringify(buildBody(input.trim())),
         cache: "no-store",

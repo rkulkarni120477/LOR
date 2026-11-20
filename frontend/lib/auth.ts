@@ -16,6 +16,7 @@ export type Session = {
   email?: string;
   roles: string[];
   expiresAt?: number;
+  permissions?: string[];
 };
 
 export function decodeClaims(token: string): Record<string, unknown> | null {
@@ -36,10 +37,22 @@ export function decodeClaims(token: string): Record<string, unknown> | null {
 }
 
 export function sessionFromToken(token: string): Session | null {
+  if (token.startsWith("session:")) {
+    try {
+      const session = JSON.parse(token.slice(8)) as Session;
+      return session.expiresAt && session.expiresAt < Date.now()
+        ? null
+        : session;
+    } catch {
+      return null;
+    }
+  }
   const claims = decodeClaims(token);
   if (!claims || typeof claims.sub !== "string") return null;
   const raw = claims[ROLE_CLAIM];
-  const roles = Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
+  const roles = Array.isArray(raw)
+    ? raw.filter((r): r is string => typeof r === "string")
+    : [];
   const exp = typeof claims.exp === "number" ? claims.exp * 1000 : undefined;
   if (exp && exp < Date.now()) return null;
   return {
@@ -66,7 +79,8 @@ export function subscribeToSession(callback: () => void): () => void {
 /** Returns the raw stored token string or null. A primitive, so it is safe as a snapshot. */
 export function readStoredToken(): string | null {
   try {
-    return sessionStorage.getItem(TOKEN_KEY);
+    const verified = sessionStorage.getItem("lor.verifiedSession");
+    return verified ? `session:${verified}` : sessionStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
@@ -75,6 +89,7 @@ export function readStoredToken(): string | null {
 export function saveToken(token: string): void {
   try {
     sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.removeItem("lor.verifiedSession");
   } catch {
     // Storage can be unavailable (private mode, blocked). The user will be asked to sign in again.
   }
@@ -83,7 +98,7 @@ export function saveToken(token: string): void {
 
 export function loadSession(): Session | null {
   try {
-    const token = sessionStorage.getItem(TOKEN_KEY);
+    const token = readStoredToken();
     return token ? sessionFromToken(token) : null;
   } catch {
     return null;
@@ -93,14 +108,57 @@ export function loadSession(): Session | null {
 export function clearToken(): void {
   try {
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem("lor.verifiedSession");
   } catch {
     // ignore
   }
   window.dispatchEvent(new Event(SESSION_EVENT));
 }
 
-export function hasAnyRole(session: Session | null, required: string[]): boolean {
+export function hasAnyRole(
+  session: Session | null,
+  required: string[],
+): boolean {
   if (!session) return false;
-  if (session.roles.includes("Admin")) return true;
-  return required.some((r) => session.roles.includes(r));
+  const aliases: Record<string, string> = {
+    Admin: "Super Administrator",
+    Contributor: "Content Creator",
+  };
+  const roles = session.roles.map((r) => aliases[r] || r);
+  if (roles.includes("Super Administrator")) return true;
+  if (
+    roles.includes("Repository Administrator") &&
+    required.some((r) => r !== "Super Administrator")
+  )
+    return true;
+  if (required.includes("Learner") && roles.length > 0) return true;
+  return required.some((r) => roles.includes(aliases[r] || r));
+}
+
+export function saveVerifiedSession(
+  data: {
+    subject: string;
+    email?: string;
+    roles: string[];
+    permissions: string[];
+    expires_at?: string;
+  },
+  token = "",
+) {
+  const session: Session = {
+    subject: data.subject,
+    email: data.email,
+    roles: data.roles,
+    permissions: data.permissions,
+    token,
+    expiresAt: data.expires_at ? Date.parse(data.expires_at) : undefined,
+  };
+  const value = JSON.stringify(session);
+  if (sessionStorage.getItem("lor.verifiedSession") === value) return;
+  sessionStorage.setItem("lor.verifiedSession", value);
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
+export function can(session: Session | null, permission: string) {
+  return !!session?.permissions?.some((p) => p === "*" || p === permission);
 }

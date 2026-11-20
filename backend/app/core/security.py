@@ -7,42 +7,52 @@
 - file:// JWKS URLs are accepted ONLY when ENV=development (dev token issuer).
 """
 
+import hashlib
 import json
 import threading
 import time
-from enum import StrEnum
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.config import BACKEND_DIR, Settings, get_settings
+from app.core.permissions import ROLE_ALIASES, Role, canonical, permissions_for
+from app.db.models import AuthSession, Group, GroupMember, GroupRole, User, UserRole
+from app.db.models import Role as RoleRow
+from app.db.session import get_db
 
-
-class Role(StrEnum):
-    LEARNER = "Learner"
-    CONTRIBUTOR = "Contributor"
-    REVIEWER = "Reviewer"
-    ADMIN = "Admin"
-
-
-KNOWN_ROLES = {r.value for r in Role}
+KNOWN_ROLES = {r.value for r in Role} | set(ROLE_ALIASES)
 
 
 class Principal(BaseModel):
     subject: str
     email: str | None = None
     roles: frozenset[str] = Field(default_factory=frozenset)
+    group_ids: frozenset[int] = Field(default_factory=frozenset)
+    department_ids: frozenset[int] = Field(default_factory=frozenset)
+    expires_at: datetime | None = None
+
+    @property
+    def is_admin(self) -> bool:
+        return bool(canonical(self.roles) & {Role.SUPER_ADMIN.value, Role.REPOSITORY_ADMIN.value})
+
+    def can(self, permission: str) -> bool:
+        permissions = permissions_for(self.roles)
+        return "*" in permissions or permission in permissions
 
     def has_any(self, required: set[str]) -> bool:
-        if Role.ADMIN.value in self.roles:
+        if Role.SUPER_ADMIN.value in canonical(self.roles):
             return True
-        return bool(self.roles & required)
+        return bool(canonical(self.roles) & canonical(required))
 
 
 class SigningKeyProvider(Protocol):
@@ -118,9 +128,11 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def get_principal(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     provider: SigningKeyProvider = Depends(get_key_provider),
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
 ) -> Principal:
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -128,7 +140,21 @@ def get_principal(
         headers={"WWW-Authenticate": "Bearer"},
     )
     if credentials is None:
-        raise unauthorized
+        token = request.cookies.get("elor_session")
+        row = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest()) if token else None
+        if row is None or row.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
+            raise unauthorized
+        if (
+            request.method not in {"GET", "HEAD", "OPTIONS"}
+            and request.headers.get("origin") != settings.app_origin
+        ):
+            raise HTTPException(403, "A same-origin request is required")
+        user = db.get(User, row.user_id)
+        if user is None:
+            raise unauthorized
+        return effective_principal(
+            db, user.subject, user.email, frozenset(row.roles), row.expires_at
+        )
     try:
         claims = decode_token(credentials.credentials, provider, settings)
     except jwt.PyJWTError as exc:
@@ -147,7 +173,53 @@ def get_principal(
     if isinstance(raw_roles, str):
         raw_roles = [raw_roles]
     roles = frozenset(r for r in raw_roles if r in KNOWN_ROLES)
-    return Principal(subject=claims["sub"], email=claims.get("email"), roles=roles)
+    return effective_principal(
+        db, claims["sub"], claims.get("email"), roles, datetime.fromtimestamp(claims["exp"], UTC)
+    )
+
+
+def effective_principal(db, subject, email, roles, expires_at=None):
+    user = db.scalar(select(User).where(User.subject == subject))
+    groups = []
+    departments = set()
+    if user:
+        if user.disabled:
+            raise HTTPException(403, "This account is disabled")
+        groups = list(
+            db.scalars(select(Group).join(GroupMember).where(GroupMember.user_id == user.id))
+        )
+        if user.department_id:
+            departments.add(user.department_id)
+        departments.update(g.department_id for g in groups if g.department_id is not None)
+        if user.roles_managed:
+            roles = frozenset(
+                db.scalars(select(RoleRow.name).join(UserRole).where(UserRole.user_id == user.id))
+            )
+        if groups:
+            roles = roles | frozenset(
+                db.scalars(
+                    select(RoleRow.name)
+                    .join(GroupRole)
+                    .where(GroupRole.group_id.in_([g.id for g in groups]))
+                )
+            )
+    return Principal(
+        subject=subject,
+        email=email,
+        roles=roles,
+        expires_at=expires_at,
+        group_ids=frozenset(g.id for g in groups),
+        department_ids=frozenset(departments),
+    )
+
+
+def require_permission(permission: str):
+    def dependency(principal: Principal = Depends(get_principal)) -> Principal:
+        if not principal.can(permission):
+            raise HTTPException(403, f"Requires permission: {permission}")
+        return principal
+
+    return dependency
 
 
 def require_roles(*roles: Role | str):

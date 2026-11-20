@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.security import Principal
 from app.db.models import MetadataLOM
 from app.services import audit
+from app.services.access import require_object
 from app.services.content import get_learning_object
 from app.services.metadata import EDITABLE_STATES
 
@@ -20,6 +21,7 @@ _FILLABLE = (
 
 def load_package_key(session: Session, lo_id: str, actor: Principal) -> str:
     """Return the storage key of the latest package version for ingest."""
+    require_object(session, lo_id, actor, "edit")
     lo = get_learning_object(session, lo_id, actor)
     if not lo.versions:
         raise ValueError("learning object has no package version")

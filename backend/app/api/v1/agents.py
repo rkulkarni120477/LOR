@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.agents.runtime import AgentRuntime, get_runtime
 from app.core.errors import NotFoundError
-from app.core.security import Principal, Role, require_roles
+from app.core.security import Principal, require_permission
 from app.db.session import get_db
 from app.schemas.agents import AgentRunResponse, AskRequest, ResumeRequest
 from app.services import agent_runs
+from app.services.access import require_object
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -65,7 +66,7 @@ def ingest(
     lo_id: str,
     db: Session = Depends(get_db),
     runtime: AgentRuntime = Depends(get_runtime),
-    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    principal: Principal = Depends(require_permission("content.edit")),
 ) -> AgentRunResponse:
     lo = agent_runs.load_package_key(db, lo_id, principal)
     thread_id = f"ingest:{lo_id}:{uuid.uuid4()}"
@@ -85,10 +86,12 @@ def resume(
     payload: ResumeRequest,
     db: Session = Depends(get_db),
     runtime: AgentRuntime = Depends(get_runtime),
-    principal: Principal = Depends(require_roles(Role.REVIEWER)),
+    principal: Principal = Depends(require_permission("workflow.review")),
 ) -> AgentRunResponse:
     if not thread_id.startswith("ingest:"):
         raise NotFoundError("unknown agent thread")
+    lo_id = thread_id.split(":")[1]
+    require_object(db, lo_id, principal, "review")
     with _ai_service_errors():
         state = runtime.resume_ingest(
             thread_id,
@@ -108,7 +111,7 @@ def resume(
 def ask(
     payload: AskRequest,
     runtime: AgentRuntime = Depends(get_runtime),
-    principal: Principal = Depends(require_roles(Role.LEARNER)),
+    principal: Principal = Depends(require_permission("reports.read")),
 ) -> StreamingResponse:
     answer_chunks = runtime.ask(payload.question)
 

@@ -9,11 +9,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError
-from app.core.security import Principal, Role, get_principal, require_roles
+from app.core.security import Principal, get_principal, require_permission
 from app.db.models import Collection, CollectionItem, Download, Favorite, LearningObject, Version
 from app.db.session import get_db
 from app.schemas.content import ContentOut
 from app.services import audit
+from app.services.access import read_condition
 from app.services.content import get_learning_object
 
 router = APIRouter(tags=["repository"])
@@ -35,15 +36,12 @@ class FavoriteInput(BaseModel):
 
 
 def visible_objects(actor: Principal):
-    query = select(LearningObject)
-    if not actor.has_any({Role.CONTRIBUTOR.value, Role.REVIEWER.value}):
-        query = query.where(LearningObject.status == "published")
-    return query
+    return select(LearningObject).where(read_condition(actor))
 
 
 def collection_access(db: Session, collection_id: str, actor: Principal, *, edit=False):
     row = db.get(Collection, collection_id)
-    owner = row and (row.owner_subject == actor.subject or Role.ADMIN.value in actor.roles)
+    owner = row and (row.owner_subject == actor.subject or actor.is_admin)
     if row is None or (not owner and row.visibility != "public"):
         raise NotFoundError("collection not found")
     if edit and not owner:
@@ -107,7 +105,7 @@ def collections(
     actor: Principal = Depends(get_principal),
 ):
     query = select(Collection)
-    if Role.ADMIN.value not in actor.roles:
+    if not actor.is_admin:
         query = query.where(
             or_(Collection.owner_subject == actor.subject, Collection.visibility == "public")
         )
@@ -129,7 +127,7 @@ def collections(
 def create_collection(
     body: CollectionInput,
     db: Session = Depends(get_db),
-    actor: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    actor: Principal = Depends(require_permission("collections.write")),
 ):
     row = Collection(id=str(uuid.uuid4()), owner_subject=actor.subject, **body.model_dump())
     db.add(row)
@@ -157,7 +155,7 @@ def edit_collection(
     collection_id: str,
     body: CollectionInput,
     db: Session = Depends(get_db),
-    actor: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    actor: Principal = Depends(require_permission("collections.write")),
 ):
     row = collection_access(db, collection_id, actor, edit=True)
     for key, value in body.model_dump().items():
@@ -172,7 +170,7 @@ def replace_items(
     collection_id: str,
     body: ItemInput,
     db: Session = Depends(get_db),
-    actor: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    actor: Principal = Depends(require_permission("collections.write")),
 ):
     collection_access(db, collection_id, actor, edit=True)
     if len(set(body.object_ids)) != len(body.object_ids):
@@ -199,7 +197,7 @@ def replace_items(
 def delete_collection(
     collection_id: str,
     db: Session = Depends(get_db),
-    actor: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    actor: Principal = Depends(require_permission("collections.write")),
 ):
     row = collection_access(db, collection_id, actor, edit=True)
     db.delete(row)
@@ -251,6 +249,8 @@ def save_favorite(
     db: Session = Depends(get_db),
     actor: Principal = Depends(get_principal),
 ):
+    if not actor.can("favorites.write"):
+        raise HTTPException(403, "Requires permission: favorites.write")
     get_learning_object(db, lo_id, actor)
     row = db.get(Favorite, (actor.subject, lo_id))
     if row:
@@ -266,6 +266,8 @@ def save_favorite(
 def remove_favorite(
     lo_id: str, db: Session = Depends(get_db), actor: Principal = Depends(get_principal)
 ):
+    if not actor.can("favorites.write"):
+        raise HTTPException(403, "Requires permission: favorites.write")
     row = db.get(Favorite, (actor.subject, lo_id))
     if row:
         db.delete(row)

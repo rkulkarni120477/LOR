@@ -44,7 +44,7 @@ def main():
     command.upgrade(migration, "head")
     queue = "elor-test-" + uuid.uuid4().hex
     actor = Principal(subject="stack-check-author", roles=frozenset({"Contributor"}))
-    reviewer = Principal(subject="stack-check-reviewer", roles=frozenset({"Reviewer"}))
+    reviewer = Principal(subject="stack-check-reviewer", roles=frozenset({"Reviewer", "Approver", "Publisher"}))
     process = None
     lo_id = None
     with tempfile.TemporaryDirectory() as directory:

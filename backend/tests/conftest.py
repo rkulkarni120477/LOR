@@ -195,10 +195,21 @@ def build_package(
     for src, alt in images or []:
         body += f'<img src="{src}" alt="{alt}"/>'
     body += "</body></html>"
-    manifest = "<manifest><metadata>"
+    manifest = (
+        '<manifest xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2" '
+        'xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_rootv1p2">'
+        "<metadata><schemaversion>1.2</schemaversion>"
+    )
     if license_text:
         manifest += f"<license>{license_text}</license>"
-    manifest += "</metadata><title>Data Basics</title></manifest>"
+    manifest += (
+        '</metadata><organizations default="org1"><organization identifier="org1">'
+        "<title>Data Basics</title>"
+        '<item identifier="item1" identifierref="res1"><title>Data Basics</title></item>'
+        "</organization></organizations><resources>"
+        '<resource identifier="res1" type="webcontent" adlcp:scormtype="sco" href="index.html">'
+        '<file href="index.html"/></resource></resources></manifest>'
+    )
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("index.html", body)
         archive.writestr("imsmanifest.xml", manifest)

@@ -11,7 +11,9 @@ import {
   readStoredToken,
   sessionFromToken,
   subscribeToSession,
+  can,
 } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 
 const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[] = [
   { href: "/", label: "Home", icon: "home" },
@@ -21,6 +23,7 @@ const LINKS: { href: string; label: string; icon: IconName; roles?: string[] }[]
     icon: "library",
     roles: ["Learner", "Contributor", "Reviewer"],
   },
+  { href: "/library", label: "Library", icon: "library", roles: ["Learner", "Contributor", "Reviewer"] },
   { href: "/contribute", label: "Create", icon: "plus", roles: ["Contributor"] },
   { href: "/contribute", label: "Upload", icon: "upload", roles: ["Contributor"] },
   { href: "/review", label: "Workflows", icon: "workflow", roles: ["Reviewer"] },
@@ -43,9 +46,9 @@ export function Nav({ children }: { children: ReactNode }) {
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
-  function signOut() {
-    clearToken();
-    navigate("/login");
+  async function signOut() {
+    try { await apiFetch("/v1/auth/logout", {method: "POST"}); }
+    finally {clearToken(); navigate("/login");}
   }
 
   return (
@@ -107,6 +110,7 @@ export function Nav({ children }: { children: ReactNode }) {
               },
             )}
           </nav>
+          {can(session, "organization.manage") && <Link href="/administration" className={`sidebar-link${pathname === "/administration" ? " active" : ""}`}><Icon name="users" size={19} /><span>Administration</span></Link>}
           <div className="sidebar-bottom">
             <div className="storage-card">
               <span className="storage-icon">

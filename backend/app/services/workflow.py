@@ -15,17 +15,20 @@ from app.core.errors import InvalidTransitionError, NotFoundError, SeparationOfD
 from app.core.security import Principal, Role
 from app.db.models import LearningObject, WorkflowState
 from app.services import audit
+from app.services.access import require_object
 from app.services.search_index import schedule_index
 
 DRAFT: Final = "draft"
 SUBMITTED: Final = "submitted"
+UNDER_REVIEW: Final = "under_review"
 APPROVED: Final = "approved"
 REJECTED: Final = "rejected"
 PUBLISHED: Final = "published"
 
 ALLOWED_TRANSITIONS: Final[dict[str, frozenset[str]]] = {
     DRAFT: frozenset({SUBMITTED}),
-    SUBMITTED: frozenset({APPROVED, REJECTED}),
+    SUBMITTED: frozenset({UNDER_REVIEW, APPROVED, REJECTED}),
+    UNDER_REVIEW: frozenset({APPROVED, REJECTED}),
     APPROVED: frozenset({PUBLISHED}),
     REJECTED: frozenset({DRAFT}),
     PUBLISHED: frozenset(),
@@ -77,6 +80,7 @@ def transition(
 
 
 def submit(session: Session, lo_id: str, actor: Principal, comment: str | None = None):
+    require_object(session, lo_id, actor, "edit")
     lo = _load(session, lo_id)
     return transition(session, lo, SUBMITTED, actor, comment)
 
@@ -88,15 +92,17 @@ def decide(
     decision: str,
     comment: str | None = None,
 ):
+    require_object(session, lo_id, actor, "approve" if decision == "approve" else "review")
     lo = _load(session, lo_id)
     # Four-eyes rule: a Reviewer cannot approve or reject their own submission. Admin is exempt
     # by design (superuser), so an Admin may approve an item they submitted.
-    if actor.subject == lo.created_by and Role.ADMIN.value not in actor.roles:
+    if actor.subject == lo.created_by and not actor.has_any({Role.SUPER_ADMIN.value}):
         raise SeparationOfDutiesError("reviewers cannot decide on their own submissions")
     target = APPROVED if decision == "approve" else REJECTED
     return transition(session, lo, target, actor, comment)
 
 
 def publish(session: Session, lo_id: str, actor: Principal):
+    require_object(session, lo_id, actor, "publish")
     lo = _load(session, lo_id)
     return transition(session, lo, PUBLISHED, actor)

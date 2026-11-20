@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/Link";
+import { ObjectAccess } from "@/components/ObjectAccess";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { apiBlob, apiFetch, postJson, putJson } from "@/lib/api";
 import {
@@ -97,6 +98,7 @@ export default function ObjectDetailPage() {
   const latest = detail.versions[detail.versions.length - 1];
   return (
     <article className="space-y-5">
+      {hasAnyRole(session, ["Contributor"]) && (detail.created_by === session?.subject || hasAnyRole(session, ["Admin"])) && <ObjectAccess id={detail.id} />}
       <p>
         <Link href="/search">Content Library</Link> / {detail.title}
       </p>

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.security import Principal, Role, require_roles
+from app.core.security import Principal, require_permission
 from app.db.session import get_db
 from app.schemas.search import Facet, SearchHit, SearchResponse
 from app.services import search as search_service
@@ -17,10 +17,10 @@ def search(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_roles(Role.LEARNER, Role.CONTRIBUTOR, Role.REVIEWER)),
+    principal: Principal = Depends(require_permission("content.read")),
 ) -> SearchResponse:
     hits, total, facets = search_service.search(
-        db, q=q, subject=subject, format=format, page=page, page_size=page_size
+        db, q=q, subject=subject, format=format, page=page, page_size=page_size, actor=principal
     )
     return SearchResponse(
         items=[

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { ApiError, apiFetch, putJson } from "@/lib/api";
+import { ResumableUpload, type UploadResult } from "@/components/ResumableUpload";
 
 type Created = { id: string; title: string; status: string };
 type Meta = {
@@ -24,8 +25,6 @@ type AgentRun = {
 };
 
 export default function ContributePage() {
-  const [title, setTitle] = useState("");
-  const [file, setFile] = useState<File | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
   const [meta, setMeta] = useState<Meta>({ title: "", keywords: [] });
   const [keywords, setKeywords] = useState("");
@@ -37,23 +36,14 @@ export default function ContributePage() {
     setMessage(err instanceof ApiError ? err.message : "Something went wrong");
   }
 
-  async function upload(event: React.FormEvent) {
-    event.preventDefault();
-    if (!file) return;
-    setBusy(true);
-    try {
-      const form = new FormData();
-      form.append("title", title);
-      form.append("file", file);
-      const result = await apiFetch<Created>("/v1/content", { method: "POST", body: form });
-      setCreated(result);
-      setMeta((m) => ({ ...m, title }));
-      setMessage("Uploaded as draft.");
-    } catch (err) {
-      fail(err);
-    } finally {
-      setBusy(false);
-    }
+  function handleUploaded(result: UploadResult) {
+    setCreated({ id: result.id, title: result.title, status: result.status });
+    setMeta((m) => ({ ...m, title: result.title }));
+    setMessage(
+      result.quarantined
+        ? "The package was quarantined by the malware check and cannot be used."
+        : "Uploaded as draft.",
+    );
   }
 
   async function saveMetadata(event: React.FormEvent) {
@@ -121,33 +111,10 @@ export default function ContributePage() {
 
       <section>
         <h2 className="mb-3 font-medium">1. Upload a package</h2>
-        <form onSubmit={upload} className="grid gap-3 sm:max-w-lg">
-          <label className="text-sm">
-            Title
-            <input
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full rounded border border-[var(--border)] bg-transparent px-3 py-2"
-            />
-          </label>
-          <label className="text-sm">
-            Package (.zip or .pdf)
-            <input
-              required
-              type="file"
-              accept=".zip,.pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="mt-1 block w-full text-sm"
-            />
-          </label>
-          <button
-            disabled={busy || !!created}
-            className="w-fit rounded bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            Upload draft
-          </button>
-        </form>
+        <p className="mb-3 text-sm text-[var(--muted)]">
+          Large packages upload in parts. You can pause and resume, and a failed part is retried.
+        </p>
+        <ResumableUpload onComplete={handleUploaded} disabled={!!created} />
       </section>
 
       {created && (

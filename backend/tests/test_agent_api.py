@@ -79,8 +79,15 @@ def test_ingest_high_score_completes_and_writes_draft_metadata(
     assert meta.extraction_confidence == pytest.approx(0.85)
 
 
-def test_ingest_low_score_pauses_then_resume_completes(client, token_factory, runtime):
+def test_ingest_low_score_pauses_then_resume_completes(client, token_factory, runtime, db_session):
     lo_id = _upload(client, token_factory, build_package(images=[("a.png", "")], license_text=None))
+    from app.db.models import ObjectGrant, User
+
+    db_session.add(User(subject="reviewer-1"))
+    db_session.add(
+        ObjectGrant(lo_id=lo_id, grantee_type="user", grantee_id="reviewer-1", permission="review")
+    )
+    db_session.commit()
     contributor = {"Authorization": f"Bearer {token_factory(['Contributor'], sub='contrib-1')}"}
     paused = client.post(f"/api/v1/agents/ingest/{lo_id}", headers=contributor)
     assert paused.status_code == 200, paused.text
@@ -112,7 +119,9 @@ def test_ask_streams_server_sent_events(client, token_factory, runtime):
     response = client.post(
         "/api/v1/agents/ask",
         json={"question": "what is the weather in London"},
-        headers={"Authorization": f"Bearer {token_factory(['Learner'], sub='learner-1')}"},
+        headers={
+            "Authorization": f"Bearer {token_factory(['Repository Administrator'], sub='admin-1')}"
+        },
     )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")

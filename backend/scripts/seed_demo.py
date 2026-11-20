@@ -59,7 +59,7 @@ def main():
     if settings.env != "development":
         raise SystemExit("Demo seeding requires ENV=development")
     actor = Principal(subject="dev-contributor", roles=frozenset({"Contributor"}))
-    reviewer = Principal(subject="dev-reviewer", roles=frozenset({"Reviewer"}))
+    reviewer = Principal(subject="dev-reviewer", roles=frozenset({"Reviewer", "Approver", "Publisher"}))
     with get_session_factory()() as session:
         for title, subject, description, target in COURSES:
             if session.scalar(

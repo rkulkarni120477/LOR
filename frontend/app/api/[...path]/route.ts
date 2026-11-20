@@ -7,12 +7,14 @@ import type { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-const FORWARD_REQUEST_HEADERS = ["authorization", "content-type", "accept"];
+const FORWARD_REQUEST_HEADERS = ["authorization", "content-type", "accept", "cookie", "origin"];
 const FORWARD_RESPONSE_HEADERS = [
   "content-type",
   "cache-control",
   "content-security-policy",
   "x-content-type-options",
+  "location",
+  "referrer-policy",
 ];
 
 type Context = { params: Promise<{ path: string[] }> };
@@ -36,7 +38,7 @@ async function proxy(request: NextRequest, context: Context): Promise<Response> 
     if (value) headers.set(name, value);
   }
 
-  const init: RequestInit = { method: request.method, headers, cache: "no-store" };
+  const init: RequestInit = { method: request.method, headers, cache: "no-store", redirect: "manual" };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = await request.arrayBuffer();
   }
@@ -48,6 +50,7 @@ async function proxy(request: NextRequest, context: Context): Promise<Response> 
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
     }
+    for (const cookie of upstream.headers.getSetCookie()) responseHeaders.append("set-cookie", cookie);
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {
     return Response.json(

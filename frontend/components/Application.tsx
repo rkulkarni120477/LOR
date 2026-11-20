@@ -17,6 +17,10 @@ import ObjectDetail from "@/views/ObjectDetail";
 import Collections from "@/views/Collections";
 import Favorites from "@/views/Favorites";
 import Versioning from "@/views/Versioning";
+import { SessionBootstrap } from "@/components/SessionBootstrap";
+import Administration from "@/views/Administration";
+import Library from "@/views/Library";
+import Editor from "@/views/Editor";
 
 const theme = createTheme({
   palette: { primary: { main: "#1762c4" }, background: { default: "#f5f7fb" } },
@@ -63,6 +67,10 @@ function QuerySession() {
           <Route path="/collections" element={<Collections />} />
           <Route path="/favorites" element={<Favorites />} />
           <Route path="/versioning" element={<Versioning />} />
+          <Route path="/administration" element={<Administration />} />
+          <Route path="/library" element={<Library />} />
+          <Route path="/library/new/:kind" element={<Editor />} />
+          <Route path="/library/:id/edit" element={<Editor />} />
           <Route
             path="*"
             element={
@@ -92,6 +100,7 @@ export function Application() {
   return (
     <ThemeProvider theme={theme}>
       <BrowserRouter>
+        <SessionBootstrap />
         <SessionQueries />
       </BrowserRouter>
     </ThemeProvider>

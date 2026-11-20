@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ValidationFailure
-from app.core.security import Principal, get_principal
+from app.core.security import Principal, require_permission
 from app.db.session import get_db
 from app.schemas.xapi import XapiStatement, XapiStoredResponse
 from app.services import xapi as xapi_service
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/xapi", tags=["xapi"])
 async def post_statements(
     request: Request,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_permission("activity.write")),
 ) -> XapiStoredResponse:
     try:
         body = await request.json()

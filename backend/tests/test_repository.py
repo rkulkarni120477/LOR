@@ -36,7 +36,7 @@ def test_collection_ownership_order_and_cascade(client, token_factory, seeded_lo
         == 200
     )
     assert client.put(path + "/items", json={"object_ids": []}, headers=other).status_code == 403
-    learner = headers(token_factory, ["Learner"])
+    learner = headers(token_factory, ["Learner"], sub="learner")
     assert client.get(path, headers=learner).json()["items"] == []
     assert (
         client.post("/api/v1/collections", json={"name": "Forbidden"}, headers=learner).status_code
@@ -84,8 +84,11 @@ def test_favorites_are_personal_and_recheck_visibility(
 
 def test_restore_appends_and_requires_author(client, token_factory, seeded_lo, db_session):
     path = f"/api/v1/content/{seeded_lo}/versions/1/restore"
-    assert client.post(path, headers=headers(token_factory, sub="other")).status_code == 403
-    assert client.post(path, headers=headers(token_factory, ["Learner"])).status_code == 403
+    assert client.post(path, headers=headers(token_factory, sub="other")).status_code == 404
+    assert (
+        client.post(path, headers=headers(token_factory, ["Learner"], sub="learner")).status_code
+        == 403
+    )
     lo = db_session.get(LearningObject, seeded_lo)
     lo.status = "published"
     db_session.commit()
@@ -123,7 +126,10 @@ def test_download_metrics_and_missing_files(client, token_factory, package_bytes
     assert response.status_code == 201
     lo_id = response.json()["id"]
     path = f"/api/v1/content/{lo_id}/download"
-    assert client.get(path, headers=headers(token_factory, ["Learner"])).status_code == 404
+    assert (
+        client.get(path, headers=headers(token_factory, ["Learner"], sub="learner")).status_code
+        == 404
+    )
     download = client.get(path, headers=owner)
     assert download.status_code == 200
     assert download.content == package_bytes
@@ -134,7 +140,9 @@ def test_download_metrics_and_missing_files(client, token_factory, package_bytes
     assert summary["storage_bytes"] == len(package_bytes)
     assert db_session.scalar(select(func.count()).select_from(Download)) == 1
     assert (
-        client.get("/api/v1/dashboard", headers=headers(token_factory, ["Learner"])).json()["total"]
+        client.get(
+            "/api/v1/dashboard", headers=headers(token_factory, ["Learner"], sub="learner")
+        ).json()["total"]
         == 0
     )
     assert client.get("/api/v1/dashboard").status_code == 401

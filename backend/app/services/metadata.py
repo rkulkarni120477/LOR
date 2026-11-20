@@ -10,6 +10,7 @@ from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM
 from app.schemas.lom import LOMMetadata
 from app.services import audit
+from app.services.access import require_object
 from app.services.search_index import schedule_index
 
 EDITABLE_STATES = {"draft", "rejected"}
@@ -18,6 +19,7 @@ EDITABLE_STATES = {"draft", "rejected"}
 def update_metadata(
     session: Session, lo_id: str, payload: LOMMetadata, actor: Principal
 ) -> MetadataLOM:
+    require_object(session, lo_id, actor, "edit")
     lo = session.get(LearningObject, lo_id)
     if lo is None:
         raise NotFoundError("learning object not found")

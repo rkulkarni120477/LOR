@@ -62,8 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"status": "ok" if healthy else "unavailable", "checks": checks},
         )
 
-    if settings.env == "development":
-        # DEV ONLY: token minting. Not registered in any other environment.
+    if settings.env == "development" and not settings.sso_configured:
+        # DEV ONLY: token minting. Not registered outside development or once SSO is configured.
         from app.api.v1.dev import router as dev_router
 
         app.include_router(dev_router, prefix="/api/v1")

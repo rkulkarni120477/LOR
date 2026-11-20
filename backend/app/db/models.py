@@ -6,7 +6,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,6 +33,9 @@ class User(Base):
     subject: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
     display_name: Mapped[str | None] = mapped_column(String(255))
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    roles_managed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user_roles: Mapped[list[UserRole]] = relationship(
@@ -58,11 +71,28 @@ class LearningObject(Base):
     title: Mapped[str] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(32), default="draft", index=True)
     created_by: Mapped[str] = mapped_column(String(255), index=True)
+    visibility: Mapped[str] = mapped_column(
+        String(16), default="repository", server_default="repository", index=True
+    )
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
+    # Content kind: "file" (uploaded package), "rich_text", "quiz" or "assessment".
+    kind: Mapped[str] = mapped_column(String(16), default="file", server_default="file")
+    # Structured body for rich_text (sanitized HTML) and quiz/assessment (questions).
+    body: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Optimistic-concurrency counter for autosave. Each accepted save increments it.
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # Normalized plain text of title, description and body, for full-text matching.
+    search_text: Mapped[str] = mapped_column(Text, default="", server_default="")
     versions: Mapped[list[Version]] = relationship(
         back_populates="learning_object",
         cascade="all, delete-orphan",
@@ -89,6 +119,11 @@ class Version(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # "clean" or "quarantined". Quarantined bytes are never served.
+    scan_status: Mapped[str] = mapped_column(String(16), default="clean", server_default="clean")
+    validation: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    package_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     learning_object: Mapped[LearningObject] = relationship(back_populates="versions")
 
@@ -236,3 +271,107 @@ class SearchIndexJob(Base):
         DateTime(timezone=True), default=utcnow, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Department(Base):
+    __tablename__ = "departments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+
+
+class Group(Base):
+    __tablename__ = "groups"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class GroupRole(Base):
+    __tablename__ = "group_roles"
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class ObjectGrant(Base):
+    __tablename__ = "object_grants"
+    lo_id: Mapped[str] = mapped_column(
+        ForeignKey("learning_objects.id", ondelete="CASCADE"), primary_key=True
+    )
+    grantee_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    grantee_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    permission: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+
+class OIDCLogin(Base):
+    __tablename__ = "oidc_logins"
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    verifier: Mapped[str] = mapped_column(String(128))
+    nonce: Mapped[str] = mapped_column(String(128))
+    return_path: Mapped[str] = mapped_column(String(512), default="/")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    roles: Mapped[list[str]] = mapped_column(JSON, default=list)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class SavedSearch(Base):
+    __tablename__ = "saved_searches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UploadSession(Base):
+    """A resumable multipart upload. The object is assembled and processed on completion."""
+
+    __tablename__ = "upload_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), index=True)
+    title: Mapped[str] = mapped_column(String(500))
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    part_size: Mapped[int] = mapped_column(Integer)
+    part_count: Mapped[int] = mapped_column(Integer)
+    # "uploading" -> "completed" | "aborted". "uploaded" means all parts are in, not yet completed.
+    status: Mapped[str] = mapped_column(String(16), default="uploading", index=True)
+    backend_upload_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    learning_object_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UploadPart(Base):
+    __tablename__ = "upload_parts"
+
+    upload_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("upload_sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    part_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(255), nullable=True)

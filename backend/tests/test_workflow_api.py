@@ -56,14 +56,14 @@ def test_upload_submit_approve_publish_happy_path(client, token_factory):
     approved = client.post(
         f"/api/v1/workflow/{lo_id}/decision",
         json={"decision": "approve", "comment": "Looks good"},
-        headers=_headers(token_factory, ["Reviewer"], "reviewer-1"),
+        headers=_headers(token_factory, ["Approver", "Publisher", "Reviewer"], "reviewer-1"),
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["status"] == "approved"
 
     published = client.post(
         f"/api/v1/workflow/{lo_id}/publish",
-        headers=_headers(token_factory, ["Reviewer"], "reviewer-1"),
+        headers=_headers(token_factory, ["Approver", "Publisher", "Reviewer"], "reviewer-1"),
     )
     assert published.json()["status"] == "published"
 
@@ -85,7 +85,7 @@ def test_illegal_transition_is_rejected(client, token_factory):
     response = client.post(
         f"/api/v1/workflow/{lo_id}/decision",
         json={"decision": "approve"},
-        headers=_headers(token_factory, ["Reviewer"], "reviewer-1"),
+        headers=_headers(token_factory, ["Super Administrator"], "reviewer-1"),
     )
     assert response.status_code == 409
     assert response.json()["error"] == "invalid_transition"
@@ -100,7 +100,7 @@ def test_reviewer_cannot_decide_on_own_submission(client, token_factory):
     response = client.post(
         f"/api/v1/workflow/{lo_id}/decision",
         json={"decision": "approve"},
-        headers={"Authorization": f"Bearer {token_factory(['Reviewer'], sub='contrib-1')}"},
+        headers={"Authorization": f"Bearer {token_factory(['Approver'], sub='contrib-1')}"},
     )
     assert response.status_code == 403
 
@@ -114,7 +114,7 @@ def test_reject_requires_comment(client, token_factory):
     response = client.post(
         f"/api/v1/workflow/{lo_id}/decision",
         json={"decision": "reject"},
-        headers=_headers(token_factory, ["Reviewer"], "reviewer-1"),
+        headers=_headers(token_factory, ["Approver", "Publisher", "Reviewer"], "reviewer-1"),
     )
     assert response.status_code == 422
 
@@ -137,7 +137,7 @@ def test_metadata_locked_after_approval(client, token_factory):
     client.post(
         f"/api/v1/workflow/{lo_id}/decision",
         json={"decision": "approve"},
-        headers=_headers(token_factory, ["Reviewer"], "reviewer-1"),
+        headers=_headers(token_factory, ["Approver", "Publisher", "Reviewer"], "reviewer-1"),
     )
     response = client.put(
         f"/api/v1/metadata/{lo_id}",

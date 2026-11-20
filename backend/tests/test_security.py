@@ -17,10 +17,11 @@ from app.core.security import (
     require_roles,
 )
 from tests.conftest import AUDIENCE, ISSUER, StaticKeyProvider
+from app.db.session import get_db
 
 
 @pytest.fixture
-def auth_app(settings, rsa_key):
+def auth_app(settings, rsa_key, db_session):
     app = FastAPI()
 
     @app.get("/whoami")
@@ -33,6 +34,7 @@ def auth_app(settings, rsa_key):
 
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_key_provider] = lambda: StaticKeyProvider(rsa_key)
+    app.dependency_overrides[get_db] = lambda: db_session
     return TestClient(app)
 
 

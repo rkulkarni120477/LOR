@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_storage
 from app.core.config import Settings, get_settings
 from app.core.errors import NotFoundError
-from app.core.security import Principal, Role, get_principal, require_roles
+from app.core.security import Principal, get_principal, require_permission
 from app.db.models import Download, LearningObject, Version, WorkflowState
 from app.db.session import get_db
 from app.schemas.common import Page
@@ -19,6 +19,7 @@ from app.schemas.lom import LOMMetadata
 from app.services import audit
 from app.services import content as content_service
 from app.services import preview as preview_service
+from app.services.access import require_object
 from app.services.search_index import schedule_index
 from app.services.users import ensure_user
 from app.storage.base import StorageBackend
@@ -52,7 +53,7 @@ def upload_content(
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
     settings: Settings = Depends(get_settings),
-    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    principal: Principal = Depends(require_permission("content.create")),
 ) -> ContentDetail:
     ensure_user(db, principal)
     data = file.file.read(settings.max_upload_bytes + 1)
@@ -65,6 +66,7 @@ def upload_content(
         data=data,
         max_bytes=settings.max_upload_bytes,
         actor=principal,
+        settings=settings,
     )
     return _detail(lo)
 
@@ -97,11 +99,12 @@ def list_package_files(
     lo_id: str,
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
-    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR, Role.REVIEWER)),
+    principal: Principal = Depends(require_permission("content.read")),
 ) -> dict:
     lo = content_service.get_learning_object(db, lo_id, principal)
     if not lo.versions:
         raise NotFoundError("no package for this learning object")
+    content_service.assert_servable(lo.versions[-1])
     return {"files": preview_service.list_files(storage, lo.versions[-1].storage_key)}
 
 
@@ -111,11 +114,12 @@ def get_package_file(
     file_path: str,
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
-    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR, Role.REVIEWER)),
+    principal: Principal = Depends(require_permission("content.read")),
 ) -> Response:
     lo = content_service.get_learning_object(db, lo_id, principal)
     if not lo.versions:
         raise NotFoundError("no package for this learning object")
+    content_service.assert_servable(lo.versions[-1])
     data, content_type = preview_service.read_file(storage, lo.versions[-1].storage_key, file_path)
     return Response(
         content=data,
@@ -125,6 +129,35 @@ def get_package_file(
             "Content-Security-Policy": "sandbox",
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/{lo_id}/thumbnail")
+def get_thumbnail(
+    lo_id: str,
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+    principal: Principal = Depends(get_principal),
+) -> Response:
+    lo = content_service.get_learning_object(db, lo_id, principal)
+    version = lo.versions[-1] if lo.versions else None
+    if version is None or not version.thumbnail_key:
+        raise NotFoundError("no thumbnail for this learning object")
+    content_service.assert_servable(version)
+    try:
+        with storage.open(version.thumbnail_key) as stream:
+            data = stream.read()
+    except FileNotFoundError as exc:
+        raise NotFoundError("thumbnail file not found") from exc
+    media_type = "image/svg+xml" if version.thumbnail_key.endswith(".svg") else "image/png"
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=300",
         },
     )
 
@@ -147,9 +180,13 @@ def download_content(
     storage: StorageBackend = Depends(get_storage),
     principal: Principal = Depends(get_principal),
 ) -> Response:
+    require_object(db, lo_id, principal, "download")
     lo = content_service.get_learning_object(db, lo_id, principal)
     # Historical drafts are available only to repository staff.
-    if version is not None and not principal.has_any({Role.CONTRIBUTOR, Role.REVIEWER}):
+    if version is not None and not any(
+        principal.can(p)
+        for p in ("content.edit", "workflow.review", "workflow.approve", "workflow.publish")
+    ):
         raise HTTPException(403, "Historical downloads require a repository role")
     selected = (
         next((v for v in lo.versions if v.version_number == version), None)
@@ -158,6 +195,7 @@ def download_content(
     )
     if selected is None:
         raise NotFoundError("version not found")
+    content_service.assert_servable(selected)
     try:
         with storage.open(selected.storage_key) as stream:
             data = stream.read()
@@ -197,14 +235,13 @@ def restore_version(
     lo_id: str,
     version_number: int,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_roles(Role.CONTRIBUTOR)),
+    principal: Principal = Depends(require_permission("content.create")),
 ) -> ContentDetail:
     # Serialize writers on PostgreSQL. The unique version constraint protects SQLite races.
     db.scalar(select(LearningObject).where(LearningObject.id == lo_id).with_for_update())
     lo = content_service.get_learning_object(db, lo_id, principal)
-    if lo.created_by != principal.subject and Role.ADMIN.value not in principal.roles:
-        raise HTTPException(403, "Only the author or an administrator can restore versions")
-    if lo.status in {"submitted", "approved"}:
+    require_object(db, lo_id, principal, "edit")
+    if lo.status in {"submitted", "under_review", "approved"}:
         raise HTTPException(409, "Finish or withdraw the active review before restoring")
     source = next((v for v in lo.versions if v.version_number == version_number), None)
     if source is None:

@@ -4,13 +4,16 @@ Nothing sensitive is hardcoded here. AWS credentials are NOT settings: they come
 the standard boto3 credential chain (env vars, profile, or IAM role).
 """
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+GUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
 class Settings(BaseSettings):
@@ -46,6 +49,30 @@ class Settings(BaseSettings):
     oidc_roles_claim: str = "roles"
     oidc_algorithms: list[str] = ["RS256"]
     oidc_jwks_cache_seconds: int = 300
+    oidc_client_id: str = ""
+    oidc_client_secret: SecretStr = SecretStr("")
+    oidc_token_auth_method: Literal["none", "client_secret_basic", "client_secret_post"] = "none"
+    oidc_redirect_uri: str = "http://localhost:3000/api/v1/auth/callback"
+    app_origin: str = "http://localhost:3000"
+    auth_session_seconds: int = 3600
+    # Microsoft Entra ID restrictions. SSO fails closed unless both are set.
+    # Tenant: the directory (tenant) ID GUID the "tid" claim must match.
+    # Domains: email domains allowed to sign in, e.g. ["academian.com"].
+    oidc_allowed_tenant_id: str = ""
+    oidc_allowed_email_domains: list[str] = []
+
+    @property
+    def sso_configured(self) -> bool:
+        """True only when Entra SSO is fully configured. Dev-token sign-in is disabled then.
+
+        Entra IDs are GUIDs, so template placeholders such as "<tenant-id>" do not count.
+        """
+        return bool(
+            GUID.fullmatch(self.oidc_client_id)
+            and self.oidc_issuer.startswith("https://")
+            and GUID.fullmatch(self.oidc_allowed_tenant_id)
+            and self.oidc_allowed_email_domains
+        )
 
     # AWS / Bedrock. Credentials come from the standard AWS chain, never from settings.
     aws_region: str = "us-east-1"
@@ -61,6 +88,18 @@ class Settings(BaseSettings):
     s3_bucket: str = ""
     local_storage_path: str = "./data/storage"
     max_upload_bytes: int = 200 * 1024 * 1024
+
+    # Upload processing. Scanner errors quarantine the upload (fail closed).
+    # "signature" is built in; "clamav" talks to clamd over TCP (CLAMAV_HOST / CLAMAV_PORT).
+    malware_scanner: Literal["signature", "clamav"] = "signature"
+    clamav_host: str = ""
+    clamav_port: int = 3310
+    upload_part_bytes: int = 8 * 1024 * 1024
+    upload_session_seconds: int = 24 * 3600
+    max_package_entries: int = 10_000
+    max_uncompressed_bytes: int = 1024 * 1024 * 1024
+    max_compression_ratio: int = 100
+    allow_generic_zip: bool = True
 
     # Agent / vector stores (separate SQLite files so Alembic never sees vec0 tables).
     checkpoint_db_path: str = "./checkpoints.db"

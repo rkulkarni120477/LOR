@@ -6,17 +6,25 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import DomainError
+from app.core.security import Principal
 from app.db.models import LearningObject, MetadataLOM
+from app.services.access import read_condition
 from app.services.content import PUBLISHED
 from app.services.search_index import matching_ids
 
 
-def _base_query(q: str | None) -> Select:
+def _base_query(q: str | None, actor: Principal | None = None) -> Select:
     query = (
         select(MetadataLOM)
         .join(LearningObject, LearningObject.id == MetadataLOM.lo_id)
-        .where(LearningObject.status == PUBLISHED)
+        .where(
+            LearningObject.status == PUBLISHED,
+            LearningObject.archived_at.is_(None),
+            LearningObject.deleted_at.is_(None),
+        )
     )
+    if actor is not None:
+        query = query.where(read_condition(actor))
     if q:
         if get_settings().search_backend == "opensearch":
             try:
@@ -26,14 +34,17 @@ def _base_query(q: str | None) -> Select:
                 error.status_code = 503
                 error.code = "search_unavailable"
                 raise error from exc
-        pattern = f"%{q.strip()}%"
-        query = query.where(
-            or_(
-                MetadataLOM.title.ilike(pattern),
-                MetadataLOM.description.ilike(pattern),
-                cast(MetadataLOM.keywords, String).ilike(pattern),
+        # Every term must match somewhere: title, description, keywords or the full-text column.
+        for term in q.lower().split()[:10]:
+            pattern = f"%{term}%"
+            query = query.where(
+                or_(
+                    MetadataLOM.title.ilike(pattern),
+                    MetadataLOM.description.ilike(pattern),
+                    cast(MetadataLOM.keywords, String).ilike(pattern),
+                    LearningObject.search_text.like(pattern),
+                )
             )
-        )
     return query
 
 
@@ -45,8 +56,9 @@ def search(
     format: str | None,  # noqa: A002 - matches the public query parameter name
     page: int,
     page_size: int,
+    actor: Principal | None = None,
 ) -> tuple[list[MetadataLOM], int, dict[str, list[tuple[str, int]]]]:
-    base_query = _base_query(q)
+    base_query = _base_query(q, actor)
     filtered = base_query
     if subject:
         filtered = filtered.where(MetadataLOM.subject == subject)
