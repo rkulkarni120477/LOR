@@ -1,0 +1,21 @@
+
+> lor-frontend@0.1.0 predev
+> node scripts/copy-h5p.mjs
+
+
+> lor-frontend@0.1.0 dev
+> next dev -p 3000
+
+▲ Next.js 16.4.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.6:3000
+✓ Ready in 8.1s
+✓ Running next.config.ts took 1052ms
+Creating turbopack project {
+  dir: 'C:\\Users\\RahulSudhakar\\source\\repos\\LOR\\frontend',
+  testMode: true
+}
+
+○ Compiling /[[...path]] ...
+ GET / 200 in 4.6s (next.js: 3.0s, application-code: 1649ms)
+ GET /api/health 200 in 2.9s (next.js: 2.7s, application-code: 192ms)
